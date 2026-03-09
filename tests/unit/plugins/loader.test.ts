@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PluginLoader } from '../../../src/plugins/loader.js';
-import type { DevBridgePlugin, PluginContext } from '../../../src/plugins/types.js';
+import type { PluginContext } from '../../../src/plugins/types.js';
 
 vi.mock('../../../src/utils/logger.js', () => ({
   logger: {

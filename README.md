@@ -1,4 +1,4 @@
-<![CDATA[<!-- markdownlint-disable MD033 MD041 -->
+<!-- markdownlint-disable MD033 MD041 -->
 <p align="center">
   <h1 align="center">DevBridge 🌉</h1>
   <p align="center">
@@ -337,4 +337,3 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 ## 📄 License
 
 [MIT](LICENSE) -- Vinicius Machado
-]]>

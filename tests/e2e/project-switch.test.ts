@@ -23,8 +23,7 @@ vi.mock('../../src/utils/telegram.js', () => ({
   withTypingIndicator: vi.fn((_ctx: unknown, fn: () => Promise<unknown>) => fn()),
 }));
 
-import { sendWithMarkdown } from '../../src/utils/telegram.js';
-const mockedSendWithMarkdown = vi.mocked(sendWithMarkdown);
+import '../../src/utils/telegram.js';
 
 describe('E2E: Project Switch Flow', () => {
   let stateManager: StateManager;

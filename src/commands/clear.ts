@@ -6,7 +6,7 @@ import type { DevBridgeConfig } from '../types.js';
 export function createClearHandler(
   sessionManager: SessionManager,
   stateManager: StateManager,
-  config: DevBridgeConfig
+  _config: DevBridgeConfig
 ) {
   return async (ctx: Context) => {
     const chatId = ctx.chat?.id?.toString() ?? '';

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NotificationFilter } from '../../../src/notifications/filters.js';
 import type { NotificationConfig } from '../../../src/notifications/types.js';
 

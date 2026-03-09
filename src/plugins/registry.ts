@@ -12,8 +12,8 @@ export class PluginRegistry {
   register(plugin: DevBridgePlugin): void {
     for (const cmd of plugin.commands) {
       if (this.commands.has(cmd.name)) {
-        const existing = this.commands.get(cmd.name)!;
-        logger.warn(`Command /${cmd.name} conflict: ${plugin.name} vs ${existing.pluginName}. Keeping first.`);
+        const existing = this.commands.get(cmd.name);
+        logger.warn(`Command /${cmd.name} conflict: ${plugin.name} vs ${existing?.pluginName}. Keeping first.`);
         continue;
       }
       this.commands.set(cmd.name, { command: cmd, pluginName: plugin.name });

@@ -140,7 +140,7 @@ describe('SessionManager', () => {
         .mockReturnValueOnce('session-b');
 
       const s1 = manager.getOrCreate('project-a', '/tmp/a', 'claude');
-      const s2 = manager.getOrCreate('project-b', '/tmp/b', 'claude');
+      manager.getOrCreate('project-b', '/tmp/b', 'claude');
 
       // Make project-a's session older
       const oldDate = new Date(Date.now() - 60000).toISOString();

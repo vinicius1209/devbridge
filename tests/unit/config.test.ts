@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
-import { resolve } from 'node:path';
 
 // Mock modules before importing
 vi.mock('node:fs', () => ({
