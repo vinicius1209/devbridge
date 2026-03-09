@@ -1,0 +1,15 @@
+tests/
+.github/
+.claude/
+src/
+tsconfig.json
+vitest.config.ts
+eslint.config.js
+.eslintrc*
+.prettierrc
+coverage/
+.devbridge/
+*.log
+.DS_Store
+.vscode/
+.idea/

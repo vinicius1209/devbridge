@@ -4,6 +4,7 @@ dist/
 *.d.ts
 *.js.map
 !vitest.config.ts
+!eslint.config.js
 
 # Config with secrets
 devbridge.config.json
@@ -17,6 +18,9 @@ devbridge.config.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Coverage
+coverage/
 
 # IDE
 .vscode/
