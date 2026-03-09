@@ -1,0 +1,25 @@
+node_modules/
+dist/
+*.js
+*.d.ts
+*.js.map
+!vitest.config.ts
+
+# Config with secrets
+devbridge.config.json
+
+# Session data
+.devbridge/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
