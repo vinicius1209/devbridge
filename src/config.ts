@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { DevBridgeConfig } from './types.js';
+import type { DevBridgeConfig, ProjectConfig } from './types.js';
+import { logger } from './utils/logger.js';
 
 const CONFIG_FILENAME = 'devbridge.config.json';
 
@@ -26,19 +27,37 @@ export function loadConfig(): DevBridgeConfig {
     process.exit(1);
   }
 
-  if (!raw.project?.name) {
-    console.error('Config error: project.name is required');
+  // Retrocompatibility: v0.1 "project" (singular) → v0.2 "projects" (plural)
+  let projects: Record<string, ProjectConfig> = {};
+
+  if (raw.project && !raw.projects) {
+    logger.warn('Config migrado automaticamente de v0.1. Atualize para o formato v0.2 com "projects".');
+    projects[raw.project.name] = {
+      path: resolve(raw.project.path),
+      adapter: raw.project.adapter ?? 'claude',
+      model: raw.project.model,
+    };
+  } else if (raw.projects) {
+    for (const [name, proj] of Object.entries(raw.projects)) {
+      const p = proj as Record<string, unknown>;
+      projects[name] = {
+        path: resolve(p.path as string),
+        adapter: (p.adapter as 'claude' | 'gemini') ?? 'claude',
+        model: p.model as string | undefined,
+        description: p.description as string | undefined,
+      };
+    }
+  } else {
+    console.error('Config error: at least one project must be configured (project or projects)');
     process.exit(1);
   }
 
-  if (!raw.project?.path) {
-    console.error('Config error: project.path is required');
-    process.exit(1);
-  }
-
-  if (!existsSync(raw.project.path)) {
-    console.error(`Config error: project.path does not exist: ${raw.project.path}`);
-    process.exit(1);
+  // Validate project paths
+  for (const [name, proj] of Object.entries(projects)) {
+    if (!existsSync(proj.path)) {
+      console.error(`Config error: project "${name}" path does not exist: ${proj.path}`);
+      process.exit(1);
+    }
   }
 
   const config: DevBridgeConfig = {
@@ -46,16 +65,15 @@ export function loadConfig(): DevBridgeConfig {
       bot_token: raw.telegram.bot_token,
       allowed_users: raw.telegram.allowed_users.map(String),
     },
-    project: {
-      name: raw.project.name,
-      path: resolve(raw.project.path),
-      adapter: 'claude',
-      model: raw.project.model,
-    },
+    projects,
+    commands: raw.commands ?? {},
     defaults: {
+      adapter: raw.defaults?.adapter ?? 'claude',
+      model: raw.defaults?.model,
       timeout: raw.defaults?.timeout ?? 120,
       max_message_length: raw.defaults?.max_message_length ?? 4096,
       session_ttl_hours: raw.defaults?.session_ttl_hours ?? 24,
+      command_timeout: raw.defaults?.command_timeout ?? 60,
     },
   };
 

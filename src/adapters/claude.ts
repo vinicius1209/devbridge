@@ -1,9 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
-import type { CLIAdapter, ChatOptions } from './base.js';
+import type { CLIAdapter, ChatOptions } from '../types.js';
 import { spawnCLI } from '../utils/process.js';
 import { logger } from '../utils/logger.js';
 
-// Track which sessions have already been started (have at least 1 message)
 const activeSessions = new Set<string>();
 
 export class ClaudeAdapter implements CLIAdapter {
@@ -17,7 +16,7 @@ export class ClaudeAdapter implements CLIAdapter {
     return result.exitCode === 0;
   }
 
-  async chat(message: string, sessionId: string, options: ChatOptions): Promise<string> {
+  async chat(message: string, sessionId: string, options: ChatOptions & { cwd: string }): Promise<string> {
     const args = [
       '-p', message,
       '--session-id', sessionId,
@@ -25,7 +24,6 @@ export class ClaudeAdapter implements CLIAdapter {
       '--allowedTools', 'Read,Glob,Grep',
     ];
 
-    // Resume existing session
     if (activeSessions.has(sessionId)) {
       args.push('--resume');
     }
@@ -39,7 +37,7 @@ export class ClaudeAdapter implements CLIAdapter {
     logger.debug('Claude CLI call', { sessionId, resume: activeSessions.has(sessionId) });
 
     const result = await spawnCLI('claude', args, {
-      cwd: this.projectPath || process.cwd(),
+      cwd: options.cwd,
       timeout,
     });
 
@@ -51,7 +49,6 @@ export class ClaudeAdapter implements CLIAdapter {
       const errorMsg = result.stderr || result.stdout || 'Unknown error';
       logger.error('Claude CLI error', { exitCode: result.exitCode, stderr: result.stderr });
 
-      // If session is corrupted, clear it and try again
       if (errorMsg.includes('session') || errorMsg.includes('Session')) {
         activeSessions.delete(sessionId);
         throw new Error('Sessao corrompida. Use /clear para iniciar nova conversa.');
@@ -60,18 +57,13 @@ export class ClaudeAdapter implements CLIAdapter {
       throw new Error(`Erro ao processar: ${errorMsg.slice(0, 200)}`);
     }
 
-    // Mark session as active after first successful message
     activeSessions.add(sessionId);
-
     return result.stdout || '(resposta vazia)';
   }
 
-  private projectPath: string | null = null;
-
-  newSession(projectPath: string): string {
-    this.projectPath = projectPath;
+  newSession(_projectPath: string): string {
     const sessionId = uuidv4();
-    logger.info('New Claude session', { sessionId, projectPath });
+    logger.info('New Claude session', { sessionId });
     return sessionId;
   }
 

@@ -1,12 +1,14 @@
 import type { Session } from '../types.js';
-import { getAdapter } from '../adapters/index.js';
+import type { AdapterRegistry } from '../adapters/index.js';
 import { loadSessions, saveSessions } from './store.js';
 import { logger } from '../utils/logger.js';
 
 export class SessionManager {
   private sessions: Map<string, Session>;
+  private registry: AdapterRegistry;
 
-  constructor() {
+  constructor(registry: AdapterRegistry) {
+    this.registry = registry;
     this.sessions = loadSessions();
     logger.info(`Loaded ${this.sessions.size} session(s) from disk`);
   }
@@ -19,15 +21,14 @@ export class SessionManager {
       }
     }
 
-    // Create new session
-    const adapter = getAdapter(adapterName);
+    const adapter = this.registry.get(adapterName);
     const cliSessionId = adapter.newSession(projectPath);
 
     const session: Session = {
       id: cliSessionId,
       projectName,
       projectPath,
-      adapter: adapterName as 'claude',
+      adapter: adapterName as Session['adapter'],
       cliSessionId,
       messageCount: 0,
       createdAt: new Date().toISOString(),
@@ -44,7 +45,6 @@ export class SessionManager {
   update(sessionId: string, updates: Partial<Session>): void {
     const session = this.sessions.get(sessionId);
     if (!session) return;
-
     Object.assign(session, updates);
     this.save();
   }
@@ -52,7 +52,7 @@ export class SessionManager {
   clear(sessionId: string): void {
     const session = this.sessions.get(sessionId);
     if (session) {
-      const adapter = getAdapter(session.adapter);
+      const adapter = this.registry.get(session.adapter);
       adapter.clearSession(session.cliSessionId);
       this.sessions.delete(sessionId);
       this.save();
@@ -89,7 +89,6 @@ export class SessionManager {
   }
 
   getActive(): Session | null {
-    // Return the most recently used session
     let latest: Session | null = null;
     for (const session of this.sessions.values()) {
       if (!latest || session.lastMessageAt > latest.lastMessageAt) {
@@ -106,6 +105,12 @@ export class SessionManager {
       }
     }
     return null;
+  }
+
+  listActive(): Session[] {
+    return [...this.sessions.values()].sort(
+      (a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
+    );
   }
 
   private save(): void {

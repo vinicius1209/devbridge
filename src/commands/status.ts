@@ -1,5 +1,6 @@
 import type { Context } from 'grammy';
 import type { SessionManager } from '../sessions/manager.js';
+import type { StateManager } from '../state.js';
 import type { DevBridgeConfig } from '../types.js';
 import { sendWithMarkdown } from '../utils/telegram.js';
 
@@ -15,18 +16,31 @@ function timeAgo(isoDate: string): string {
   return 'agora mesmo';
 }
 
-export function createStatusHandler(sessionManager: SessionManager, config: DevBridgeConfig) {
+export function createStatusHandler(
+  sessionManager: SessionManager,
+  stateManager: StateManager,
+  config: DevBridgeConfig
+) {
   return async (ctx: Context) => {
-    const session = sessionManager.getByProject(config.project.name);
+    const chatId = ctx.chat?.id?.toString() ?? '';
+    const activeProject = stateManager.getActiveProject(chatId);
 
-    if (!session) {
-      await ctx.reply('Nenhuma sessao ativa. Envie uma mensagem para iniciar.');
+    if (!activeProject) {
+      await ctx.reply('Nenhum projeto ativo. Use /projects para ver disponiveis.');
       return;
     }
 
-    const model = config.project.model ?? 'default';
+    const project = config.projects[activeProject];
+    const session = sessionManager.getByProject(activeProject);
+
+    if (!session) {
+      await ctx.reply(`Projeto ativo: ${activeProject}\nNenhuma sessao. Envie uma mensagem para iniciar.`);
+      return;
+    }
+
+    const model = project?.model ?? config.defaults.model ?? 'default';
     const text = `Projeto: ${session.projectName}
-Adapter: Claude (${model})
+Adapter: ${session.adapter} (${model})
 Sessao: ${session.id.slice(0, 8)} (${session.messageCount} mensagens)
 Iniciada: ${timeAgo(session.createdAt)}
 Ultima msg: ${timeAgo(session.lastMessageAt)}`;

@@ -1,28 +1,37 @@
 import { loadConfig } from './config.js';
 import { createBot } from './bot.js';
-import { getAdapter } from './adapters/index.js';
 import { logger } from './utils/logger.js';
 
 async function main() {
-  logger.info('DevBridge v0.1 starting...');
+  logger.info('DevBridge v0.2 starting...');
 
-  // Load config
   const config = loadConfig();
-  logger.info(`Project: ${config.project.name} (${config.project.path})`);
+  const projectCount = Object.keys(config.projects).length;
+  logger.info(`${projectCount} project(s) configured`);
 
-  // Verify Claude CLI is available
-  const adapter = getAdapter(config.project.adapter);
-  const isAvailable = await adapter.isAvailable();
+  const { bot, registry } = createBot(config);
 
-  if (!isAvailable) {
-    logger.error('Claude CLI nao encontrada. Instale em https://claude.ai/code');
+  // Check available adapters
+  const available = await registry.getAvailable();
+  if (available.length === 0) {
+    logger.error('Nenhuma CLI de AI encontrada. Instale Claude CLI ou Gemini CLI.');
     process.exit(1);
   }
 
-  logger.info('Claude CLI detected');
+  logger.info(`Available adapters: ${available.map(a => a.name).join(', ')}`);
 
-  // Create and start bot
-  const bot = createBot(config);
+  // Warn about configured adapters that aren't available
+  for (const [name, proj] of Object.entries(config.projects)) {
+    try {
+      const adapter = registry.get(proj.adapter);
+      const isAvail = await adapter.isAvailable();
+      if (!isAvail) {
+        logger.warn(`Project "${name}" uses ${proj.adapter} but it's not installed`);
+      }
+    } catch {
+      logger.warn(`Project "${name}" uses unknown adapter: ${proj.adapter}`);
+    }
+  }
 
   logger.info('Bot starting with long polling...');
   await bot.start({

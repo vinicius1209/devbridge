@@ -1,41 +1,59 @@
 import type { Context } from 'grammy';
 import type { SessionManager } from './sessions/manager.js';
+import type { StateManager } from './state.js';
+import type { AdapterRegistry } from './adapters/index.js';
 import type { DevBridgeConfig } from './types.js';
-import { getAdapter } from './adapters/index.js';
 import { splitMessage, sendWithMarkdown, withTypingIndicator } from './utils/telegram.js';
 import { logger } from './utils/logger.js';
 
-export function createChatHandler(sessionManager: SessionManager, config: DevBridgeConfig) {
+export function createChatHandler(
+  sessionManager: SessionManager,
+  stateManager: StateManager,
+  registry: AdapterRegistry,
+  config: DevBridgeConfig
+) {
   return async (ctx: Context) => {
     const message = ctx.message?.text;
     if (!message) return;
 
-    const { project, defaults } = config;
+    const chatId = ctx.chat?.id?.toString() ?? '';
+    const activeProject = stateManager.getActiveProject(chatId);
+
+    if (!activeProject) {
+      await ctx.reply('Nenhum projeto ativo. Use /projects para ver disponiveis.');
+      return;
+    }
+
+    const project = config.projects[activeProject];
+    if (!project) {
+      await ctx.reply('Projeto ativo nao encontrado no config. Use /projects.');
+      return;
+    }
 
     try {
       const session = sessionManager.getOrCreate(
-        project.name,
+        activeProject,
         project.path,
         project.adapter
       );
 
-      const adapter = getAdapter(project.adapter);
+      const adapter = registry.get(project.adapter);
+      const model = project.model ?? config.defaults.model;
 
       const response = await withTypingIndicator(ctx, () =>
         adapter.chat(message, session.cliSessionId, {
-          model: project.model,
-          timeout: defaults.timeout,
+          model,
+          timeout: config.defaults.timeout,
+          cwd: project.path,
         })
       );
 
-      // Update session stats
       sessionManager.update(session.id, {
         messageCount: session.messageCount + 1,
         lastMessageAt: new Date().toISOString(),
       });
 
-      // Split and send response
-      const chunks = splitMessage(response, defaults.max_message_length);
+      const chunks = splitMessage(response, config.defaults.max_message_length);
       for (const chunk of chunks) {
         await sendWithMarkdown(ctx, chunk);
       }
@@ -43,9 +61,8 @@ export function createChatHandler(sessionManager: SessionManager, config: DevBri
       const errorMessage = (err as Error).message;
       logger.error('Chat handler error', { error: errorMessage });
 
-      // If session is corrupted, auto-clear and suggest retry
       if (errorMessage.includes('corrompida')) {
-        sessionManager.clearByProject(project.name);
+        sessionManager.clearByProject(activeProject);
       }
 
       await ctx.reply(errorMessage);
