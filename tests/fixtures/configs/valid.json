@@ -1,0 +1,36 @@
+{
+  "telegram": {
+    "bot_token": "123456:ABC-DEF-valid-token",
+    "allowed_users": ["12345", "67890"]
+  },
+  "projects": {
+    "my-app": {
+      "path": "__TEST_PROJECT_PATH__",
+      "adapter": "claude",
+      "model": "sonnet",
+      "description": "Test application"
+    }
+  },
+  "commands": {
+    "test": "yarn test",
+    "lint": "yarn lint"
+  },
+  "defaults": {
+    "adapter": "claude",
+    "timeout": 120,
+    "max_message_length": 4096,
+    "session_ttl_hours": 24,
+    "command_timeout": 60
+  },
+  "notifications": {
+    "enabled": true,
+    "port": 9876,
+    "secret": "webhook-secret",
+    "github_events": ["push", "pull_request"],
+    "watched_branches": ["main", "develop"],
+    "rate_limit": {
+      "max_per_minute": 30,
+      "cooldown_seconds": 5
+    }
+  }
+}

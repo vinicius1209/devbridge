@@ -1,0 +1,34 @@
+{
+  "ref": "refs/heads/main",
+  "repository": {
+    "name": "my-app",
+    "full_name": "user/my-app"
+  },
+  "pusher": {
+    "name": "johndoe"
+  },
+  "commits": [
+    {
+      "id": "abc1234567890",
+      "message": "feat: add new feature\n\nDetailed description",
+      "author": {
+        "name": "John Doe",
+        "email": "john@example.com"
+      },
+      "timestamp": "2024-01-15T10:30:00Z"
+    },
+    {
+      "id": "def4567890123",
+      "message": "fix: resolve edge case",
+      "author": {
+        "name": "John Doe",
+        "email": "john@example.com"
+      },
+      "timestamp": "2024-01-15T10:35:00Z"
+    }
+  ],
+  "head_commit": {
+    "id": "def4567890123",
+    "message": "fix: resolve edge case"
+  }
+}

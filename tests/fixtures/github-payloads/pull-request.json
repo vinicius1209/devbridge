@@ -1,0 +1,27 @@
+{
+  "action": "opened",
+  "number": 42,
+  "repository": {
+    "name": "my-app",
+    "full_name": "user/my-app"
+  },
+  "pull_request": {
+    "number": 42,
+    "title": "feat: implement new API endpoint",
+    "body": "This PR adds a new endpoint for...",
+    "state": "open",
+    "merged": false,
+    "user": {
+      "login": "johndoe"
+    },
+    "head": {
+      "ref": "feature/new-endpoint",
+      "sha": "abc123"
+    },
+    "base": {
+      "ref": "main",
+      "sha": "def456"
+    },
+    "html_url": "https://github.com/user/my-app/pull/42"
+  }
+}

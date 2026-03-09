@@ -1,0 +1,11 @@
+{
+  "telegram": {
+    "allowed_users": ["12345"]
+  },
+  "projects": {
+    "my-app": {
+      "path": "/tmp/test",
+      "adapter": "claude"
+    }
+  }
+}
