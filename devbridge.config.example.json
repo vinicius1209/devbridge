@@ -23,6 +23,10 @@
     "status": "git status --short",
     "log": "git log --oneline -10"
   },
+  "plugins": {
+    "@devbridge/plugin-git": true,
+    "@devbridge/plugin-github": true
+  },
   "defaults": {
     "adapter": "claude",
     "timeout": 120,

@@ -22,6 +22,7 @@ export interface DevBridgeConfig {
   // v0.2+
   projects: Record<string, ProjectConfig>;
   commands: Record<string, string>;
+  plugins?: Record<string, boolean | Record<string, unknown>>;
   defaults: {
     adapter: AdapterName;
     model?: string;
@@ -29,6 +30,18 @@ export interface DevBridgeConfig {
     max_message_length: number;
     session_ttl_hours: number;
     command_timeout: number;
+  };
+  notifications?: {
+    enabled: boolean;
+    port: number;
+    bind?: string;
+    secret?: string;
+    github_events: string[];
+    watched_branches: string[];
+    rate_limit: {
+      max_per_minute: number;
+      cooldown_seconds: number;
+    };
   };
 }
 

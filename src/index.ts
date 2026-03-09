@@ -3,13 +3,13 @@ import { createBot } from './bot.js';
 import { logger } from './utils/logger.js';
 
 async function main() {
-  logger.info('DevBridge v0.2 starting...');
+  logger.info('DevBridge v0.5 starting...');
 
   const config = loadConfig();
   const projectCount = Object.keys(config.projects).length;
   logger.info(`${projectCount} project(s) configured`);
 
-  const { bot, registry } = createBot(config);
+  const { bot, registry, pluginLoader, notificationServer } = await createBot(config);
 
   // Check available adapters
   const available = await registry.getAvailable();
@@ -32,6 +32,29 @@ async function main() {
       logger.warn(`Project "${name}" uses unknown adapter: ${proj.adapter}`);
     }
   }
+
+  // Start notification server if enabled
+  if (notificationServer) {
+    try {
+      await notificationServer.start();
+    } catch (err) {
+      logger.error('Failed to start notification server', { error: (err as Error).message });
+    }
+  }
+
+  // Graceful shutdown
+  const shutdown = async () => {
+    logger.info('Shutting down...');
+    if (notificationServer) {
+      await notificationServer.stop();
+    }
+    await pluginLoader.unloadAll();
+    bot.stop();
+    process.exit(0);
+  };
+
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
 
   logger.info('Bot starting with long polling...');
   await bot.start({

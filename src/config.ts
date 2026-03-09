@@ -60,6 +60,23 @@ export function loadConfig(): DevBridgeConfig {
     }
   }
 
+  // Parse notifications config with defaults
+  const rawNotif = raw.notifications;
+  const notifications = rawNotif
+    ? {
+        enabled: rawNotif.enabled ?? true,
+        port: rawNotif.port ?? 9876,
+        bind: rawNotif.bind,
+        secret: rawNotif.secret,
+        github_events: rawNotif.github_events ?? ['push', 'pull_request', 'issues', 'workflow_run'],
+        watched_branches: rawNotif.watched_branches ?? ['main', 'master', 'develop'],
+        rate_limit: {
+          max_per_minute: rawNotif.rate_limit?.max_per_minute ?? 30,
+          cooldown_seconds: rawNotif.rate_limit?.cooldown_seconds ?? 5,
+        },
+      }
+    : undefined;
+
   const config: DevBridgeConfig = {
     telegram: {
       bot_token: raw.telegram.bot_token,
@@ -67,6 +84,7 @@ export function loadConfig(): DevBridgeConfig {
     },
     projects,
     commands: raw.commands ?? {},
+    plugins: raw.plugins ?? {},
     defaults: {
       adapter: raw.defaults?.adapter ?? 'claude',
       model: raw.defaults?.model,
@@ -75,6 +93,7 @@ export function loadConfig(): DevBridgeConfig {
       session_ttl_hours: raw.defaults?.session_ttl_hours ?? 24,
       command_timeout: raw.defaults?.command_timeout ?? 60,
     },
+    notifications,
   };
 
   return config;

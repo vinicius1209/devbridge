@@ -1,9 +1,12 @@
 {
   "name": "devbridge",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Control your projects via Telegram using Claude CLI, Gemini CLI, or any AI coding agent",
   "main": "dist/index.js",
+  "bin": {
+    "devbridge": "./dist/bin/cli.js"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
