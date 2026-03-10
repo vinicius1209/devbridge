@@ -85,7 +85,7 @@ describe('E2E: Project Switch Flow', () => {
           projectName,
           projectPath,
           adapter,
-          cliSessionId: `cli-session-${sessionCounter}`,
+          cliSessionId: null,
           messageCount: 0,
           createdAt: new Date().toISOString(),
           lastMessageAt: new Date().toISOString(),
@@ -93,7 +93,10 @@ describe('E2E: Project Switch Flow', () => {
         sessions.set(session.id, session);
         return session;
       }),
-      update: vi.fn(),
+      update: vi.fn().mockImplementation((sessionId: string, updates: any) => {
+        const session = sessions.get(sessionId);
+        if (session) Object.assign(session, updates);
+      }),
       clearByProject: vi.fn(),
     };
   });
@@ -108,7 +111,7 @@ describe('E2E: Project Switch Flow', () => {
 
     // Chat with frontend project (claude adapter)
     stateManager.setActiveProject('12345', 'frontend');
-    claudeAdapter.chat.mockResolvedValue('Frontend response');
+    claudeAdapter.chat.mockResolvedValue({ text: 'Frontend response', sessionId: 'claude-session-1' });
 
     const ctx1 = createMockContext({ chatId: 12345, text: 'analyze components' });
     await chatHandler(ctx1 as any);
@@ -124,7 +127,7 @@ describe('E2E: Project Switch Flow', () => {
     expect(stateManager.getActiveProject('12345')).toBe('backend');
 
     // Chat with backend project (gemini adapter)
-    geminiAdapter.chat.mockResolvedValue('Backend response');
+    geminiAdapter.chat.mockResolvedValue({ text: 'Backend response', sessionId: 'gemini:/tmp/backend' });
 
     const ctx2 = createMockContext({ chatId: 12345, text: 'show API routes' });
     await chatHandler(ctx2 as any);
@@ -132,7 +135,7 @@ describe('E2E: Project Switch Flow', () => {
     expect(geminiAdapter.chat).toHaveBeenCalledTimes(1);
     expect(geminiAdapter.chat).toHaveBeenCalledWith(
       'show API routes',
-      expect.any(String),
+      null, // New session for backend
       expect.objectContaining({ cwd: '/tmp/backend' })
     );
   });
@@ -147,19 +150,19 @@ describe('E2E: Project Switch Flow', () => {
 
     // Chat with frontend
     stateManager.setActiveProject('12345', 'frontend');
-    claudeAdapter.chat.mockResolvedValue('Frontend answer');
+    claudeAdapter.chat.mockResolvedValue({ text: 'Frontend answer', sessionId: 'claude-1' });
 
     await chatHandler(createMockContext({ chatId: 12345, text: 'msg1' }) as any);
 
     // Switch to backend
     stateManager.setActiveProject('12345', 'backend');
-    geminiAdapter.chat.mockResolvedValue('Backend answer');
+    geminiAdapter.chat.mockResolvedValue({ text: 'Backend answer', sessionId: 'gemini:/tmp/backend' });
 
     await chatHandler(createMockContext({ chatId: 12345, text: 'msg2' }) as any);
 
     // Switch back to frontend
     stateManager.setActiveProject('12345', 'frontend');
-    claudeAdapter.chat.mockResolvedValue('Frontend answer 2');
+    claudeAdapter.chat.mockResolvedValue({ text: 'Frontend answer 2', sessionId: 'claude-1' });
 
     await chatHandler(createMockContext({ chatId: 12345, text: 'msg3' }) as any);
 

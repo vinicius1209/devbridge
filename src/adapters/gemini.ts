@@ -1,5 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
-import type { CLIAdapter, ChatOptions } from '../types.js';
+import type { CLIAdapter, ChatOptions, ChatResult } from '../types.js';
 import { spawnCLI } from '../utils/process.js';
 import { logger } from '../utils/logger.js';
 
@@ -14,11 +13,14 @@ export class GeminiAdapter implements CLIAdapter {
     return result.exitCode === 0;
   }
 
-  async chat(message: string, sessionId: string, options: ChatOptions & { cwd: string }): Promise<string> {
-    // Gemini CLI flags - adapt based on actual CLI availability
+  async chat(message: string, sessionId: string | null, options: ChatOptions & { cwd: string }): Promise<ChatResult> {
     const args = [
       '-p', message,
     ];
+
+    if (sessionId) {
+      args.push('--resume', 'latest');
+    }
 
     if (options.model) {
       args.push('--model', options.model);
@@ -26,7 +28,7 @@ export class GeminiAdapter implements CLIAdapter {
 
     const timeout = options.timeout ?? 120;
 
-    logger.debug('Gemini CLI call', { sessionId });
+    logger.debug('Gemini CLI call', { sessionId, resume: !!sessionId });
 
     const result = await spawnCLI('gemini', args, {
       cwd: options.cwd,
@@ -40,19 +42,17 @@ export class GeminiAdapter implements CLIAdapter {
     if (result.exitCode !== 0) {
       const errorMsg = result.stderr || result.stdout || 'Unknown error';
       logger.error('Gemini CLI error', { exitCode: result.exitCode, stderr: result.stderr });
+
+      if (errorMsg.includes('session') || errorMsg.includes('Session') || errorMsg.includes('resume')) {
+        throw new Error('SESSION_EXPIRED');
+      }
+
       throw new Error(`Erro ao processar: ${errorMsg.slice(0, 200)}`);
     }
 
-    return result.stdout || '(resposta vazia)';
-  }
-
-  newSession(_projectPath: string): string {
-    const sessionId = uuidv4();
-    logger.info('New Gemini session', { sessionId });
-    return sessionId;
-  }
-
-  clearSession(sessionId: string): void {
-    logger.info('Gemini session cleared', { sessionId });
+    return {
+      text: result.stdout || '(resposta vazia)',
+      sessionId: `gemini:${options.cwd}`,
+    };
   }
 }

@@ -35,7 +35,7 @@ export interface BotDeps {
 export async function createBot(config: DevBridgeConfig): Promise<BotDeps> {
   const bot = new Bot(config.telegram.bot_token);
   const registry = createDefaultRegistry();
-  const sessionManager = new SessionManager(registry);
+  const sessionManager = new SessionManager();
   const stateManager = new StateManager();
   const pluginLoader = new PluginLoader();
   const pluginRegistry = new PluginRegistry();

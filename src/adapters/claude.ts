@@ -1,9 +1,12 @@
-import { v4 as uuidv4 } from 'uuid';
-import type { CLIAdapter, ChatOptions } from '../types.js';
+import type { CLIAdapter, ChatOptions, ChatResult } from '../types.js';
 import { spawnCLI } from '../utils/process.js';
 import { logger } from '../utils/logger.js';
 
-const activeSessions = new Set<string>();
+interface ClaudeJsonResponse {
+  result: string;
+  session_id: string;
+  is_error: boolean;
+}
 
 export class ClaudeAdapter implements CLIAdapter {
   name = 'claude';
@@ -16,16 +19,15 @@ export class ClaudeAdapter implements CLIAdapter {
     return result.exitCode === 0;
   }
 
-  async chat(message: string, sessionId: string, options: ChatOptions & { cwd: string }): Promise<string> {
+  async chat(message: string, sessionId: string | null, options: ChatOptions & { cwd: string }): Promise<ChatResult> {
     const args = [
       '-p', message,
-      '--session-id', sessionId,
-      '--output-format', 'text',
+      '--output-format', 'json',
       '--allowedTools', 'Read,Glob,Grep',
     ];
 
-    if (activeSessions.has(sessionId)) {
-      args.push('--resume');
+    if (sessionId) {
+      args.push('--resume', sessionId);
     }
 
     if (options.model) {
@@ -34,7 +36,7 @@ export class ClaudeAdapter implements CLIAdapter {
 
     const timeout = options.timeout ?? 120;
 
-    logger.debug('Claude CLI call', { sessionId, resume: activeSessions.has(sessionId) });
+    logger.debug('Claude CLI call', { sessionId, resume: !!sessionId });
 
     const result = await spawnCLI('claude', args, {
       cwd: options.cwd,
@@ -49,26 +51,27 @@ export class ClaudeAdapter implements CLIAdapter {
       const errorMsg = result.stderr || result.stdout || 'Unknown error';
       logger.error('Claude CLI error', { exitCode: result.exitCode, stderr: result.stderr });
 
-      if (errorMsg.includes('session') || errorMsg.includes('Session')) {
-        activeSessions.delete(sessionId);
-        throw new Error('Sessao corrompida. Use /clear para iniciar nova conversa.');
+      if (errorMsg.includes('session') || errorMsg.includes('Session') || errorMsg.includes('No matching')) {
+        throw new Error('SESSION_EXPIRED');
       }
 
       throw new Error(`Erro ao processar: ${errorMsg.slice(0, 200)}`);
     }
 
-    activeSessions.add(sessionId);
-    return result.stdout || '(resposta vazia)';
-  }
-
-  newSession(_projectPath: string): string {
-    const sessionId = uuidv4();
-    logger.info('New Claude session', { sessionId });
-    return sessionId;
-  }
-
-  clearSession(sessionId: string): void {
-    activeSessions.delete(sessionId);
-    logger.info('Session cleared', { sessionId });
+    // Parse JSON response from Claude CLI
+    try {
+      const json: ClaudeJsonResponse = JSON.parse(result.stdout);
+      return {
+        text: json.result || '(resposta vazia)',
+        sessionId: json.session_id || null,
+      };
+    } catch {
+      // Fallback: if JSON parsing fails, return raw stdout
+      logger.warn('Failed to parse Claude JSON response, using raw output');
+      return {
+        text: result.stdout || '(resposta vazia)',
+        sessionId,
+      };
+    }
   }
 }

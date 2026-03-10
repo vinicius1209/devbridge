@@ -50,12 +50,15 @@ export interface ChatOptions {
   timeout?: number;
 }
 
+export interface ChatResult {
+  text: string;
+  sessionId: string | null;
+}
+
 export interface CLIAdapter {
   name: string;
   isAvailable(): Promise<boolean>;
-  chat(message: string, sessionId: string, options: ChatOptions & { cwd: string }): Promise<string>;
-  newSession(projectPath: string): string;
-  clearSession(sessionId: string): void;
+  chat(message: string, sessionId: string | null, options: ChatOptions & { cwd: string }): Promise<ChatResult>;
 }
 
 export interface Session {
@@ -63,7 +66,7 @@ export interface Session {
   projectName: string;
   projectPath: string;
   adapter: AdapterName;
-  cliSessionId: string;
+  cliSessionId: string | null;
   messageCount: number;
   createdAt: string;
   lastMessageAt: string;

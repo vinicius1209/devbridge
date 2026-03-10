@@ -1,10 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ClaudeAdapter } from '../../../src/adapters/claude.js';
 
-vi.mock('uuid', () => ({
-  v4: vi.fn(() => 'mock-uuid-1234'),
-}));
-
 vi.mock('../../../src/utils/logger.js', () => ({
   logger: {
     info: vi.fn(),
@@ -21,6 +17,10 @@ vi.mock('../../../src/utils/process.js', () => ({
 import { spawnCLI } from '../../../src/utils/process.js';
 
 const mockedSpawnCLI = vi.mocked(spawnCLI);
+
+function mockJsonResponse(result: string, sessionId: string) {
+  return JSON.stringify({ result, session_id: sessionId, is_error: false });
+}
 
 describe('ClaudeAdapter', () => {
   let adapter: ClaudeAdapter;
@@ -62,26 +62,73 @@ describe('ClaudeAdapter', () => {
   });
 
   describe('chat', () => {
-    it('should call spawnCLI with correct arguments', async () => {
+    it('should use --output-format json and parse response', async () => {
       mockedSpawnCLI.mockResolvedValue({
-        stdout: 'Hello from Claude',
+        stdout: mockJsonResponse('Hello from Claude', 'cli-uuid-123'),
         stderr: '',
         exitCode: 0,
         timedOut: false,
       });
 
-      const result = await adapter.chat('hello', 'session-1', {
+      const result = await adapter.chat('hello', null, {
         cwd: '/tmp/project',
         timeout: 60,
         model: 'sonnet',
       });
 
-      expect(result).toBe('Hello from Claude');
+      expect(result).toEqual({ text: 'Hello from Claude', sessionId: 'cli-uuid-123' });
       expect(mockedSpawnCLI).toHaveBeenCalledWith(
         'claude',
-        expect.arrayContaining(['-p', 'hello', '--session-id', 'session-1', '--model', 'sonnet']),
+        expect.arrayContaining(['-p', 'hello', '--output-format', 'json', '--model', 'sonnet']),
         expect.objectContaining({ cwd: '/tmp/project', timeout: 60 })
       );
+    });
+
+    it('should not include --session-id in args', async () => {
+      mockedSpawnCLI.mockResolvedValue({
+        stdout: mockJsonResponse('response', 'uuid-1'),
+        stderr: '',
+        exitCode: 0,
+        timedOut: false,
+      });
+
+      await adapter.chat('hello', null, { cwd: '/tmp/project' });
+
+      const args = mockedSpawnCLI.mock.calls[0][1];
+      expect(args).not.toContain('--session-id');
+    });
+
+    it('should add --resume when sessionId is provided', async () => {
+      mockedSpawnCLI.mockResolvedValue({
+        stdout: mockJsonResponse('Resumed', 'existing-uuid'),
+        stderr: '',
+        exitCode: 0,
+        timedOut: false,
+      });
+
+      const result = await adapter.chat('hello', 'existing-uuid', {
+        cwd: '/tmp/project',
+        timeout: 60,
+      });
+
+      expect(result).toEqual({ text: 'Resumed', sessionId: 'existing-uuid' });
+      const args = mockedSpawnCLI.mock.calls[0][1];
+      expect(args).toContain('--resume');
+      expect(args).toContain('existing-uuid');
+    });
+
+    it('should not add --resume when sessionId is null', async () => {
+      mockedSpawnCLI.mockResolvedValue({
+        stdout: mockJsonResponse('New session', 'new-uuid'),
+        stderr: '',
+        exitCode: 0,
+        timedOut: false,
+      });
+
+      await adapter.chat('hello', null, { cwd: '/tmp/project' });
+
+      const args = mockedSpawnCLI.mock.calls[0][1];
+      expect(args).not.toContain('--resume');
     });
 
     it('should throw on timeout', async () => {
@@ -92,10 +139,23 @@ describe('ClaudeAdapter', () => {
         timedOut: true,
       });
 
-      await expect(adapter.chat('hello', 'session-1', {
+      await expect(adapter.chat('hello', null, {
         cwd: '/tmp/project',
         timeout: 60,
       })).rejects.toThrow(/Timeout/);
+    });
+
+    it('should throw SESSION_EXPIRED on session errors', async () => {
+      mockedSpawnCLI.mockResolvedValue({
+        stdout: '',
+        stderr: 'Session not found or corrupted',
+        exitCode: 1,
+        timedOut: false,
+      });
+
+      await expect(adapter.chat('hello', 'old-session', {
+        cwd: '/tmp/project',
+      })).rejects.toThrow('SESSION_EXPIRED');
     });
 
     it('should throw on non-zero exit code', async () => {
@@ -106,27 +166,14 @@ describe('ClaudeAdapter', () => {
         timedOut: false,
       });
 
-      await expect(adapter.chat('hello', 'session-1', {
+      await expect(adapter.chat('hello', null, {
         cwd: '/tmp/project',
       })).rejects.toThrow(/Erro ao processar/);
     });
 
-    it('should throw corrupted session error when session error in stderr', async () => {
+    it('should fallback to raw stdout when JSON parse fails', async () => {
       mockedSpawnCLI.mockResolvedValue({
-        stdout: '',
-        stderr: 'Session not found or corrupted',
-        exitCode: 1,
-        timedOut: false,
-      });
-
-      await expect(adapter.chat('hello', 'session-1', {
-        cwd: '/tmp/project',
-      })).rejects.toThrow(/corrompida/);
-    });
-
-    it('should return "(resposta vazia)" when stdout is empty on success', async () => {
-      mockedSpawnCLI.mockResolvedValue({
-        stdout: '',
+        stdout: 'Plain text response',
         stderr: '',
         exitCode: 0,
         timedOut: false,
@@ -136,20 +183,22 @@ describe('ClaudeAdapter', () => {
         cwd: '/tmp/project',
       });
 
-      expect(result).toBe('(resposta vazia)');
+      expect(result).toEqual({ text: 'Plain text response', sessionId: 'session-1' });
     });
-  });
 
-  describe('newSession', () => {
-    it('should return a UUID session ID', () => {
-      const sessionId = adapter.newSession('/tmp/project');
-      expect(sessionId).toBe('mock-uuid-1234');
-    });
-  });
+    it('should return "(resposta vazia)" when result is empty', async () => {
+      mockedSpawnCLI.mockResolvedValue({
+        stdout: JSON.stringify({ result: '', session_id: 'uuid-1', is_error: false }),
+        stderr: '',
+        exitCode: 0,
+        timedOut: false,
+      });
 
-  describe('clearSession', () => {
-    it('should not throw', () => {
-      expect(() => adapter.clearSession('session-1')).not.toThrow();
+      const result = await adapter.chat('hello', null, {
+        cwd: '/tmp/project',
+      });
+
+      expect(result.text).toBe('(resposta vazia)');
     });
   });
 });

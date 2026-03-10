@@ -83,7 +83,7 @@ describe('createChatHandler (router)', () => {
   it('should dispatch message to adapter and send response', async () => {
     const ctx = createMockContext({ chatId: 12345, text: 'explain the code' });
     stateManager.setActiveProject('12345', 'test-project');
-    mockAdapter.chat.mockResolvedValue('This code does X');
+    mockAdapter.chat.mockResolvedValue({ text: 'This code does X', sessionId: 'cli-session-1' });
 
     const handler = createChatHandler(
       sessionManager as SessionManager,
@@ -101,7 +101,10 @@ describe('createChatHandler (router)', () => {
         cwd: '/tmp/test-project',
       })
     );
-    expect(sessionManager.update).toHaveBeenCalled();
+    expect(sessionManager.update).toHaveBeenCalledWith('session-1', expect.objectContaining({
+      cliSessionId: 'cli-session-1',
+      messageCount: 1,
+    }));
   });
 
   it('should not process message if text is empty', async () => {
@@ -137,10 +140,43 @@ describe('createChatHandler (router)', () => {
     expect(ctx.reply).toHaveBeenCalledWith('Adapter failed');
   });
 
-  it('should clear session on corrupted session error', async () => {
+  it('should auto-recover on SESSION_EXPIRED by retrying without session', async () => {
     const ctx = createMockContext({ chatId: 12345, text: 'hello' });
     stateManager.setActiveProject('12345', 'test-project');
-    mockAdapter.chat.mockRejectedValue(new Error('Sessao corrompida'));
+
+    // First call: SESSION_EXPIRED, second call: success
+    mockAdapter.chat
+      .mockRejectedValueOnce(new Error('SESSION_EXPIRED'))
+      .mockResolvedValueOnce({ text: 'Recovered response', sessionId: 'new-cli-session' });
+
+    const handler = createChatHandler(
+      sessionManager as SessionManager,
+      stateManager,
+      registry,
+      config
+    );
+
+    await handler(ctx as any);
+
+    // Should have called chat twice (original + retry)
+    expect(mockAdapter.chat).toHaveBeenCalledTimes(2);
+    // First call with existing sessionId
+    expect(mockAdapter.chat.mock.calls[0][1]).toBe('cli-session-1');
+    // Second call with null (new session)
+    expect(mockAdapter.chat.mock.calls[1][1]).toBeNull();
+    // Should notify user about recovery
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('expirou'));
+    // Should update cliSessionId to null first, then to new value
+    expect(sessionManager.update).toHaveBeenCalledWith('session-1', { cliSessionId: null });
+    expect(sessionManager.update).toHaveBeenCalledWith('session-1', expect.objectContaining({
+      cliSessionId: 'new-cli-session',
+    }));
+  });
+
+  it('should clear session when auto-recovery also fails', async () => {
+    const ctx = createMockContext({ chatId: 12345, text: 'hello' });
+    stateManager.setActiveProject('12345', 'test-project');
+    mockAdapter.chat.mockRejectedValue(new Error('SESSION_EXPIRED'));
 
     const handler = createChatHandler(
       sessionManager as SessionManager,
@@ -152,5 +188,30 @@ describe('createChatHandler (router)', () => {
     await handler(ctx as any);
 
     expect(sessionManager.clearByProject).toHaveBeenCalledWith('test-project');
+  });
+
+  it('should send context warning at threshold', async () => {
+    (sessionManager.getOrCreate as ReturnType<typeof vi.fn>).mockReturnValue({
+      id: 'session-1',
+      cliSessionId: 'cli-session-1',
+      projectName: 'test-project',
+      messageCount: 49,
+      lastMessageAt: new Date().toISOString(),
+    });
+
+    const ctx = createMockContext({ chatId: 12345, text: 'hello' });
+    stateManager.setActiveProject('12345', 'test-project');
+    mockAdapter.chat.mockResolvedValue({ text: 'response', sessionId: 'cli-session-1' });
+
+    const handler = createChatHandler(
+      sessionManager as SessionManager,
+      stateManager,
+      registry,
+      config
+    );
+
+    await handler(ctx as any);
+
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('50 mensagens'));
   });
 });

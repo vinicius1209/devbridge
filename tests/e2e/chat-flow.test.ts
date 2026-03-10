@@ -54,7 +54,7 @@ describe('E2E: Full Chat Flow', () => {
           projectName,
           projectPath,
           adapter,
-          cliSessionId: `cli-session-${sessionCounter}`,
+          cliSessionId: null,
           messageCount: 0,
           createdAt: new Date().toISOString(),
           lastMessageAt: new Date().toISOString(),
@@ -95,20 +95,20 @@ describe('E2E: Full Chat Flow', () => {
     stateManager.setActiveProject('12345', 'test-project');
 
     // Step 3: Now chat should work
-    mockAdapter.chat.mockResolvedValue('The code does X, Y, Z.');
+    mockAdapter.chat.mockResolvedValue({ text: 'The code does X, Y, Z.', sessionId: 'cli-session-1' });
 
     const ctx2 = createMockContext({ chatId: 12345, text: 'explain the main function' });
     await chatHandler(ctx2 as any);
 
     expect(mockAdapter.chat).toHaveBeenCalledWith(
       'explain the main function',
-      expect.any(String),
+      null, // First message: cliSessionId is null
       expect.objectContaining({ cwd: '/tmp/test-project' })
     );
     expect(mockedSendWithMarkdown).toHaveBeenCalledWith(expect.anything(), 'The code does X, Y, Z.');
   });
 
-  it('should handle multi-turn conversation', async () => {
+  it('should handle multi-turn conversation with session propagation', async () => {
     stateManager.setActiveProject('12345', 'test-project');
 
     const chatHandler = createChatHandler(
@@ -118,28 +118,30 @@ describe('E2E: Full Chat Flow', () => {
       config
     );
 
-    // Turn 1
-    mockAdapter.chat.mockResolvedValue('Response to turn 1');
+    // Turn 1 - new session, cliSessionId is null
+    mockAdapter.chat.mockResolvedValue({ text: 'Response to turn 1', sessionId: 'cli-session-abc' });
     const ctx1 = createMockContext({ chatId: 12345, text: 'What is this project?' });
     await chatHandler(ctx1 as any);
 
-    // Turn 2
-    mockAdapter.chat.mockResolvedValue('Response to turn 2');
+    // After turn 1, session should have cliSessionId updated
+    expect(sessionManager.update).toHaveBeenCalledWith('session-1', expect.objectContaining({
+      cliSessionId: 'cli-session-abc',
+    }));
+
+    // Turn 2 - should use the propagated cliSessionId
+    mockAdapter.chat.mockResolvedValue({ text: 'Response to turn 2', sessionId: 'cli-session-abc' });
     const ctx2 = createMockContext({ chatId: 12345, text: 'Show me the tests' });
     await chatHandler(ctx2 as any);
 
+    // Second call should use the real CLI session ID
+    expect(mockAdapter.chat.mock.calls[1][1]).toBe('cli-session-abc');
+
     // Turn 3
-    mockAdapter.chat.mockResolvedValue('Response to turn 3');
+    mockAdapter.chat.mockResolvedValue({ text: 'Response to turn 3', sessionId: 'cli-session-abc' });
     const ctx3 = createMockContext({ chatId: 12345, text: 'How can I improve coverage?' });
     await chatHandler(ctx3 as any);
 
     expect(mockAdapter.chat).toHaveBeenCalledTimes(3);
-
-    // All calls should use the same CLI session ID
-    const sessionIds = mockAdapter.chat.mock.calls.map(call => call[1]);
-    expect(new Set(sessionIds).size).toBe(1);
-
-    // Session update should have been called for each message
     expect(sessionManager.update).toHaveBeenCalledTimes(3);
   });
 
@@ -161,7 +163,7 @@ describe('E2E: Full Chat Flow', () => {
     expect(ctx1.reply).toHaveBeenCalledWith('Temporary failure');
 
     // Second message: adapter works again
-    mockAdapter.chat.mockResolvedValue('Back online');
+    mockAdapter.chat.mockResolvedValue({ text: 'Back online', sessionId: 'cli-session-new' });
     const ctx2 = createMockContext({ chatId: 12345, text: 'hello again' });
     await chatHandler(ctx2 as any);
 

@@ -17,8 +17,6 @@ vi.mock('../../../src/adapters/claude.js', () => ({
     name: 'claude',
     isAvailable: vi.fn().mockResolvedValue(true),
     chat: vi.fn(),
-    newSession: vi.fn(),
-    clearSession: vi.fn(),
   })),
 }));
 
@@ -27,8 +25,6 @@ vi.mock('../../../src/adapters/gemini.js', () => ({
     name: 'gemini',
     isAvailable: vi.fn().mockResolvedValue(true),
     chat: vi.fn(),
-    newSession: vi.fn(),
-    clearSession: vi.fn(),
   })),
 }));
 

@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SessionManager } from '../../../src/sessions/manager.js';
-import { AdapterRegistry } from '../../../src/adapters/index.js';
-import { createMockAdapter } from '../../helpers/mock-adapter.js';
+
+let uuidCounter = 0;
+
+vi.mock('uuid', () => ({
+  v4: vi.fn(() => `uuid-${++uuidCounter}`),
+}));
 
 vi.mock('../../../src/utils/logger.js', () => ({
   logger: {
@@ -19,30 +23,23 @@ vi.mock('../../../src/sessions/store.js', () => ({
 
 describe('SessionManager', () => {
   let manager: SessionManager;
-  let registry: AdapterRegistry;
-  let mockAdapter: ReturnType<typeof createMockAdapter>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    registry = new AdapterRegistry();
-    mockAdapter = createMockAdapter('claude');
-    mockAdapter.newSession.mockReturnValue('cli-session-abc');
-    registry.register(mockAdapter);
-
-    manager = new SessionManager(registry);
+    uuidCounter = 0;
+    manager = new SessionManager();
   });
 
   describe('getOrCreate', () => {
-    it('should create a new session when none exists', () => {
+    it('should create a new session with null cliSessionId', () => {
       const session = manager.getOrCreate('my-project', '/tmp/project', 'claude');
 
       expect(session).toBeDefined();
       expect(session.projectName).toBe('my-project');
       expect(session.projectPath).toBe('/tmp/project');
       expect(session.adapter).toBe('claude');
-      expect(session.cliSessionId).toBe('cli-session-abc');
+      expect(session.cliSessionId).toBeNull();
       expect(session.messageCount).toBe(0);
-      expect(mockAdapter.newSession).toHaveBeenCalledWith('/tmp/project');
     });
 
     it('should return existing session for the same project', () => {
@@ -50,14 +47,9 @@ describe('SessionManager', () => {
       const session2 = manager.getOrCreate('my-project', '/tmp/project', 'claude');
 
       expect(session1.id).toBe(session2.id);
-      expect(mockAdapter.newSession).toHaveBeenCalledTimes(1);
     });
 
     it('should create separate sessions for different projects', () => {
-      mockAdapter.newSession
-        .mockReturnValueOnce('session-a')
-        .mockReturnValueOnce('session-b');
-
       const session1 = manager.getOrCreate('project-a', '/tmp/a', 'claude');
       const session2 = manager.getOrCreate('project-b', '/tmp/b', 'claude');
 
@@ -69,25 +61,24 @@ describe('SessionManager', () => {
     it('should update session fields', () => {
       const session = manager.getOrCreate('my-project', '/tmp/project', 'claude');
 
-      manager.update(session.id, { messageCount: 10 });
+      manager.update(session.id, { messageCount: 10, cliSessionId: 'real-cli-id' });
 
       const updated = manager.getByProject('my-project');
       expect(updated?.messageCount).toBe(10);
+      expect(updated?.cliSessionId).toBe('real-cli-id');
     });
 
     it('should do nothing for non-existent session', () => {
-      // Should not throw
       expect(() => manager.update('nonexistent', { messageCount: 5 })).not.toThrow();
     });
   });
 
   describe('clear', () => {
-    it('should remove session and call adapter clearSession', () => {
+    it('should remove session', () => {
       const session = manager.getOrCreate('my-project', '/tmp/project', 'claude');
 
       manager.clear(session.id);
 
-      expect(mockAdapter.clearSession).toHaveBeenCalledWith(session.cliSessionId);
       expect(manager.getByProject('my-project')).toBeNull();
     });
 
@@ -98,12 +89,11 @@ describe('SessionManager', () => {
 
   describe('clearByProject', () => {
     it('should clear session by project name', () => {
-      const session = manager.getOrCreate('my-project', '/tmp/project', 'claude');
+      manager.getOrCreate('my-project', '/tmp/project', 'claude');
 
       manager.clearByProject('my-project');
 
       expect(manager.getByProject('my-project')).toBeNull();
-      expect(mockAdapter.clearSession).toHaveBeenCalledWith(session.cliSessionId);
     });
 
     it('should do nothing if project has no session', () => {
@@ -115,7 +105,6 @@ describe('SessionManager', () => {
     it('should remove expired sessions', () => {
       const session = manager.getOrCreate('my-project', '/tmp/project', 'claude');
 
-      // Manually set lastMessageAt to 25 hours ago
       const longAgo = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
       manager.update(session.id, { lastMessageAt: longAgo });
 
@@ -135,14 +124,9 @@ describe('SessionManager', () => {
 
   describe('listActive', () => {
     it('should return all sessions sorted by last message date (newest first)', () => {
-      mockAdapter.newSession
-        .mockReturnValueOnce('session-a')
-        .mockReturnValueOnce('session-b');
-
       const s1 = manager.getOrCreate('project-a', '/tmp/a', 'claude');
       manager.getOrCreate('project-b', '/tmp/b', 'claude');
 
-      // Make project-a's session older
       const oldDate = new Date(Date.now() - 60000).toISOString();
       manager.update(s1.id, { lastMessageAt: oldDate });
 
@@ -159,14 +143,9 @@ describe('SessionManager', () => {
 
   describe('getActive', () => {
     it('should return the most recently used session', () => {
-      mockAdapter.newSession
-        .mockReturnValueOnce('session-a')
-        .mockReturnValueOnce('session-b');
-
       const s1 = manager.getOrCreate('project-a', '/tmp/a', 'claude');
       manager.getOrCreate('project-b', '/tmp/b', 'claude');
 
-      // Make project-a's session older
       const oldDate = new Date(Date.now() - 60000).toISOString();
       manager.update(s1.id, { lastMessageAt: oldDate });
 

@@ -1,10 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GeminiAdapter } from '../../../src/adapters/gemini.js';
 
-vi.mock('uuid', () => ({
-  v4: vi.fn(() => 'mock-uuid-5678'),
-}));
-
 vi.mock('../../../src/utils/logger.js', () => ({
   logger: {
     info: vi.fn(),
@@ -70,18 +66,51 @@ describe('GeminiAdapter', () => {
         timedOut: false,
       });
 
-      const result = await adapter.chat('hello', 'session-1', {
+      const result = await adapter.chat('hello', null, {
         cwd: '/tmp/project',
         timeout: 60,
         model: 'gemini-pro',
       });
 
-      expect(result).toBe('Hello from Gemini');
+      expect(result).toEqual({ text: 'Hello from Gemini', sessionId: 'gemini:/tmp/project' });
       expect(mockedSpawnCLI).toHaveBeenCalledWith(
         'gemini',
         expect.arrayContaining(['-p', 'hello', '--model', 'gemini-pro']),
         expect.objectContaining({ cwd: '/tmp/project', timeout: 60 })
       );
+    });
+
+    it('should add --resume latest when sessionId is provided', async () => {
+      mockedSpawnCLI.mockResolvedValue({
+        stdout: 'Resumed response',
+        stderr: '',
+        exitCode: 0,
+        timedOut: false,
+      });
+
+      const result = await adapter.chat('hello', 'gemini:/tmp/project', {
+        cwd: '/tmp/project',
+        timeout: 60,
+      });
+
+      expect(result.text).toBe('Resumed response');
+      const args = mockedSpawnCLI.mock.calls[0][1];
+      expect(args).toContain('--resume');
+      expect(args).toContain('latest');
+    });
+
+    it('should not add --resume when sessionId is null', async () => {
+      mockedSpawnCLI.mockResolvedValue({
+        stdout: 'New response',
+        stderr: '',
+        exitCode: 0,
+        timedOut: false,
+      });
+
+      await adapter.chat('hello', null, { cwd: '/tmp/project' });
+
+      const args = mockedSpawnCLI.mock.calls[0][1];
+      expect(args).not.toContain('--resume');
     });
 
     it('should throw on timeout', async () => {
@@ -92,10 +121,23 @@ describe('GeminiAdapter', () => {
         timedOut: true,
       });
 
-      await expect(adapter.chat('hello', 'session-1', {
+      await expect(adapter.chat('hello', null, {
         cwd: '/tmp/project',
         timeout: 30,
       })).rejects.toThrow(/Timeout/);
+    });
+
+    it('should throw SESSION_EXPIRED on session errors', async () => {
+      mockedSpawnCLI.mockResolvedValue({
+        stdout: '',
+        stderr: 'Error: could not resume session',
+        exitCode: 1,
+        timedOut: false,
+      });
+
+      await expect(adapter.chat('hello', 'gemini:/tmp/project', {
+        cwd: '/tmp/project',
+      })).rejects.toThrow('SESSION_EXPIRED');
     });
 
     it('should throw on non-zero exit code', async () => {
@@ -106,7 +148,7 @@ describe('GeminiAdapter', () => {
         timedOut: false,
       });
 
-      await expect(adapter.chat('hello', 'session-1', {
+      await expect(adapter.chat('hello', null, {
         cwd: '/tmp/project',
       })).rejects.toThrow(/Erro ao processar/);
     });
@@ -119,11 +161,11 @@ describe('GeminiAdapter', () => {
         timedOut: false,
       });
 
-      const result = await adapter.chat('hello', 'session-1', {
+      const result = await adapter.chat('hello', null, {
         cwd: '/tmp/project',
       });
 
-      expect(result).toBe('(resposta vazia)');
+      expect(result.text).toBe('(resposta vazia)');
     });
 
     it('should work without model option', async () => {
@@ -134,26 +176,13 @@ describe('GeminiAdapter', () => {
         timedOut: false,
       });
 
-      const result = await adapter.chat('hello', 'session-1', {
+      const result = await adapter.chat('hello', null, {
         cwd: '/tmp/project',
       });
 
-      expect(result).toBe('response');
+      expect(result.text).toBe('response');
       const callArgs = mockedSpawnCLI.mock.calls[0][1];
       expect(callArgs).not.toContain('--model');
-    });
-  });
-
-  describe('newSession', () => {
-    it('should return a UUID session ID', () => {
-      const sessionId = adapter.newSession('/tmp/project');
-      expect(sessionId).toBe('mock-uuid-5678');
-    });
-  });
-
-  describe('clearSession', () => {
-    it('should not throw', () => {
-      expect(() => adapter.clearSession('session-1')).not.toThrow();
     });
   });
 });

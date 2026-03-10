@@ -1,14 +1,12 @@
+import { v4 as uuidv4 } from 'uuid';
 import type { Session } from '../types.js';
-import type { AdapterRegistry } from '../adapters/index.js';
 import { loadSessions, saveSessions } from './store.js';
 import { logger } from '../utils/logger.js';
 
 export class SessionManager {
   private sessions: Map<string, Session>;
-  private registry: AdapterRegistry;
 
-  constructor(registry: AdapterRegistry) {
-    this.registry = registry;
+  constructor() {
     this.sessions = loadSessions();
     logger.info(`Loaded ${this.sessions.size} session(s) from disk`);
   }
@@ -21,15 +19,12 @@ export class SessionManager {
       }
     }
 
-    const adapter = this.registry.get(adapterName);
-    const cliSessionId = adapter.newSession(projectPath);
-
     const session: Session = {
-      id: cliSessionId,
+      id: uuidv4(),
       projectName,
       projectPath,
       adapter: adapterName as Session['adapter'],
-      cliSessionId,
+      cliSessionId: null,
       messageCount: 0,
       createdAt: new Date().toISOString(),
       lastMessageAt: new Date().toISOString(),
@@ -52,8 +47,6 @@ export class SessionManager {
   clear(sessionId: string): void {
     const session = this.sessions.get(sessionId);
     if (session) {
-      const adapter = this.registry.get(session.adapter);
-      adapter.clearSession(session.cliSessionId);
       this.sessions.delete(sessionId);
       this.save();
       logger.info('Session cleared', { sessionId, project: session.projectName });
