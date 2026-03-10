@@ -162,6 +162,36 @@ export async function createBot(config: DevBridgeConfig): Promise<BotDeps> {
     }
   }
 
+  // Register commands in Telegram's menu
+  const menuCommands = [
+    { command: 'help', description: 'Mostra comandos disponiveis' },
+    { command: 'projects', description: 'Lista projetos configurados' },
+    { command: 'project', description: 'Seleciona projeto (numero ou nome)' },
+    { command: 'switch', description: 'Alterna projeto (numero ou nome)' },
+    { command: 'sessions', description: 'Lista sessoes ativas' },
+    { command: 'run', description: 'Executa comando (test, lint, build...)' },
+    { command: 'clear', description: 'Limpa sessao e inicia nova conversa' },
+    { command: 'status', description: 'Info da sessao ativa' },
+    { command: 'plugins', description: 'Lista plugins carregados' },
+  ];
+
+  if (config.notifications?.enabled) {
+    menuCommands.push(
+      { command: 'notifications', description: 'Liga/desliga notificacoes' },
+      { command: 'mute', description: 'Silencia notificacoes por N minutos' },
+    );
+  }
+
+  for (const cmdInfo of pluginRegistry.listCommands()) {
+    menuCommands.push({
+      command: cmdInfo.command,
+      description: cmdInfo.description || `Plugin: ${cmdInfo.plugin}`,
+    });
+  }
+
+  await bot.api.setMyCommands(menuCommands);
+  logger.info(`${menuCommands.length} command(s) registered in Telegram menu`);
+
   // Chat handler (must be after all command registrations)
   bot.on('message:text', createChatHandler(sessionManager, stateManager, registry, config));
 

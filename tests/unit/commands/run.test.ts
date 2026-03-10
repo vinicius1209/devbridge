@@ -101,8 +101,8 @@ describe('run command', () => {
 
     await handler(ctx as any);
 
-    // Should send "Running..." message first
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('Running'));
+    // Should send "Executando..." message first
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('Executando'));
   });
 
   it('should handle timeout', async () => {

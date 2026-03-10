@@ -43,7 +43,7 @@ export function createRunHandler(config: DevBridgeConfig, stateManager: StateMan
       return;
     }
 
-    await ctx.reply(`Running \`${command}\`...`);
+    await ctx.reply(`Executando \`${command}\`...`);
 
     try {
       const result = await withTypingIndicator(ctx, () =>
