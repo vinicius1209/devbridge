@@ -9,9 +9,9 @@ export function createHelpHandler(pluginRegistry?: PluginRegistry) {
 Comandos disponiveis:
   /help           — Mostra esta mensagem
   /projects       — Lista projetos configurados
-  /project        — Troca o projeto ativo
+  /project <n>    — Troca projeto (numero ou nome)
   /sessions       — Lista sessoes ativas
-  /switch         — Alterna para sessao de outro projeto
+  /switch <n>     — Alterna projeto (numero ou nome)
   /run            — Executa comando da whitelist
   /clear          — Limpa a sessao atual
   /status         — Info da sessao ativa

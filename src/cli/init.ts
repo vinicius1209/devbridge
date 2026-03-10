@@ -13,6 +13,66 @@ async function ask(rl: ReturnType<typeof createRL>, question: string): Promise<s
   return new Promise(res => rl.question(question, res));
 }
 
+async function telegramApi(token: string, method: string, params?: Record<string, string>): Promise<unknown> {
+  const url = new URL(`https://api.telegram.org/bot${token}/${method}`);
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      url.searchParams.set(k, v);
+    }
+  }
+  const res = await fetch(url.toString());
+  const data = await res.json() as { ok: boolean; result: unknown };
+  if (!data.ok) throw new Error(`Telegram API error: ${method}`);
+  return data.result;
+}
+
+async function pollForChatId(token: string, rl: ReturnType<typeof createRL>): Promise<string> {
+  try {
+    // Get bot info
+    const me = await telegramApi(token, 'getMe') as { username: string };
+    console.log(`  Bot detectado: @${me.username}`);
+
+    // Drain old updates
+    const old = await telegramApi(token, 'getUpdates') as Array<{ update_id: number }>;
+    let offset = old.length > 0 ? old[old.length - 1].update_id + 1 : 0;
+
+    console.log(`\n  Envie qualquer mensagem para @${me.username} no Telegram...`);
+    console.log('  Aguardando mensagem (60s)...\n');
+
+    // Poll for new messages
+    for (let i = 0; i < 30; i++) {
+      const updates = await telegramApi(token, 'getUpdates', {
+        offset: String(offset),
+        timeout: '2',
+      }) as Array<{
+        update_id: number;
+        message?: { chat: { id: number; first_name?: string }; from?: { first_name?: string } };
+      }>;
+
+      for (const update of updates) {
+        offset = update.update_id + 1;
+        if (update.message?.chat?.id) {
+          const chatId = String(update.message.chat.id);
+          const name = update.message.from?.first_name ?? update.message.chat.first_name ?? '';
+          const nameStr = name ? ` (${name})` : '';
+
+          const confirm = await ask(rl, `  Encontrado! Chat ID: ${chatId}${nameStr}. Correto? (Y/n): `);
+          if (confirm.toLowerCase() !== 'n') {
+            return chatId;
+          }
+        }
+      }
+    }
+
+    console.log('  Timeout. Nenhuma mensagem recebida.');
+  } catch {
+    console.log('  Nao foi possivel conectar a API do Telegram.');
+  }
+
+  // Fallback to manual
+  return ask(rl, '  Cole seu Chat ID manualmente: ');
+}
+
 export async function init() {
   const rl = createRL();
 
@@ -47,10 +107,9 @@ export async function init() {
     process.exit(1);
   }
 
-  // Step 3 — Chat ID
+  // Step 3 — Chat ID (auto-discovery)
   console.log('\nPasso 3/4 — Seu Chat ID');
-  console.log('  Para encontrar seu Chat ID, envie /start para @userinfobot no Telegram.');
-  const chatId = await ask(rl, '  Cole seu Chat ID: ');
+  const chatId = await pollForChatId(botToken.trim(), rl);
 
   // Step 4 — Projects
   console.log('\nPasso 4/4 — Projetos');
@@ -66,7 +125,10 @@ export async function init() {
   } else {
     console.log(`  Encontrados ${detected.length} projeto(s):\n`);
     for (const proj of detected) {
-      const include = await ask(rl, `  Incluir ${proj.name} (${proj.type})? (Y/n): `);
+      const cmdHint = Object.keys(proj.suggestedCommands).length > 0
+        ? ` [${Object.keys(proj.suggestedCommands).join(', ')}]`
+        : '';
+      const include = await ask(rl, `  Incluir ${proj.name} (${proj.type}${cmdHint})? (Y/n): `);
       if (include.toLowerCase() !== 'n') {
         const defaultAdapter = hasClaudeV ? 'claude' : 'gemini';
         const adapter = hasClaudeV && hasGeminiV
@@ -82,6 +144,23 @@ export async function init() {
     }
   }
 
+  // Build smart commands from detected projects
+  const commands: Record<string, string> = {
+    status: 'git status --short',
+    log: 'git log --oneline -10',
+  };
+
+  const includedProjects = detected.filter(p => projects[p.name]);
+  const commandSlots = ['test', 'lint', 'build', 'dev'];
+  for (const slot of commandSlots) {
+    for (const proj of includedProjects) {
+      if (proj.suggestedCommands[slot] && !commands[slot]) {
+        commands[slot] = proj.suggestedCommands[slot];
+        break;
+      }
+    }
+  }
+
   // Generate config
   const config = {
     telegram: {
@@ -89,13 +168,7 @@ export async function init() {
       allowed_users: [chatId.trim()],
     },
     projects,
-    commands: {
-      test: 'yarn test',
-      lint: 'yarn lint',
-      build: 'yarn build',
-      status: 'git status --short',
-      log: 'git log --oneline -10',
-    },
+    commands,
     defaults: {
       adapter: hasClaudeV ? 'claude' : 'gemini',
       timeout: 120,
@@ -118,6 +191,7 @@ export async function init() {
   console.log(`======`);
   console.log(`  Config: ${configPath}`);
   console.log(`  Projetos: ${Object.keys(projects).length} configurados`);
+  console.log(`  Comandos: ${Object.keys(commands).join(', ')}`);
   console.log(`  Logs: ~/.devbridge/logs/devbridge.log`);
   console.log(`\nExecute 'devbridge start' ou 'yarn dev' para iniciar!`);
 

@@ -3,6 +3,7 @@ import type { DevBridgeConfig } from '../types.js';
 import type { StateManager } from '../state.js';
 import type { AdapterRegistry } from '../adapters/index.js';
 import { sendWithMarkdown } from '../utils/telegram.js';
+import { resolveProjectByNameOrIndex, shortenPath } from '../utils/project-resolver.js';
 
 export function createProjectsHandler(config: DevBridgeConfig, stateManager: StateManager) {
   return async (ctx: Context) => {
@@ -15,14 +16,17 @@ export function createProjectsHandler(config: DevBridgeConfig, stateManager: Sta
       return;
     }
 
-    let text = 'Projetos configurados:\n';
+    const maxNameLen = Math.max(...entries.map(([name]) => name.length));
+
+    let text = 'Projetos configurados:\n\n';
     entries.forEach(([name, proj], i) => {
       const isActive = name === activeProject;
-      const desc = proj.description ? ` — ${proj.description}` : '';
-      const marker = isActive ? ' ✅ ativo' : '';
-      text += `  ${i + 1}. ${name} (${proj.path}) — ${proj.adapter}${marker}${desc}\n`;
+      const marker = isActive ? ' ✅' : '';
+      const paddedName = name.padEnd(maxNameLen);
+      const shortPath = shortenPath(proj.path);
+      text += `  ${i + 1}. ${paddedName} — ${proj.adapter} — ${shortPath}${marker}\n`;
     });
-    text += '\nUse /project <nome> para trocar.';
+    text += '\n/project <numero ou nome>';
 
     await sendWithMarkdown(ctx, text);
   };
@@ -35,19 +39,22 @@ export function createProjectHandler(
 ) {
   return async (ctx: Context) => {
     const chatId = ctx.chat?.id?.toString() ?? '';
-    const name = ctx.match?.toString().trim();
+    const input = ctx.match?.toString().trim();
 
-    if (!name) {
-      await ctx.reply('Uso: /project <nome>');
+    if (!input) {
+      await ctx.reply('Uso: /project <numero ou nome>');
       return;
     }
 
-    const project = config.projects[name];
-    if (!project) {
-      const available = Object.keys(config.projects).join(', ');
-      await ctx.reply(`Projeto "${name}" nao encontrado. Disponiveis: ${available}`);
+    const resolved = resolveProjectByNameOrIndex(input, config.projects);
+    if (!resolved) {
+      const entries = Object.entries(config.projects);
+      const list = entries.map(([n], i) => `${i + 1}. ${n}`).join('\n');
+      await ctx.reply(`Projeto "${input}" nao encontrado.\n\n${list}`);
       return;
     }
+
+    const { name, project } = resolved;
 
     // Verify adapter is available
     try {

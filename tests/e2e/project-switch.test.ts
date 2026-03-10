@@ -182,6 +182,6 @@ describe('E2E: Project Switch Flow', () => {
     await switchHandler(ctx as any);
 
     expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('nao encontrado'));
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('frontend, backend'));
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('1. frontend'));
   });
 });

@@ -95,4 +95,23 @@ describe('switch command', () => {
 
     expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('nao encontrado'));
   });
+
+  it('should switch by number', async () => {
+    const handler = createSwitchHandler(config, stateManager);
+    const ctx = createMockContext({ chatId: 12345, match: '2' });
+
+    await handler(ctx as any);
+
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('Projeto ativo: project-b'));
+    expect(stateManager.getActiveProject('12345')).toBe('project-b');
+  });
+
+  it('should reject out-of-range number', async () => {
+    const handler = createSwitchHandler(config, stateManager);
+    const ctx = createMockContext({ chatId: 12345, match: '99' });
+
+    await handler(ctx as any);
+
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('nao encontrado'));
+  });
 });

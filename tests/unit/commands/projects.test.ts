@@ -52,7 +52,7 @@ describe('projects command', () => {
     await handler(ctx as any);
 
     const sentText = mockedSendWithMarkdown.mock.calls[0][1];
-    expect(sentText).toContain('ativo');
+    expect(sentText).toContain('✅');
   });
 
   it('should reply with no projects message when config has none', async () => {
@@ -102,6 +102,25 @@ describe('project command (select)', () => {
   it('should reply with error for unknown project', async () => {
     const handler = createProjectHandler(config, stateManager, registry);
     const ctx = createMockContext({ chatId: 12345, match: 'nonexistent' });
+
+    await handler(ctx as any);
+
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('nao encontrado'));
+  });
+
+  it('should select project by number', async () => {
+    const handler = createProjectHandler(config, stateManager, registry);
+    const ctx = createMockContext({ chatId: 12345, match: '1' });
+
+    await handler(ctx as any);
+
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('Projeto ativo: test-project'));
+    expect(stateManager.getActiveProject('12345')).toBe('test-project');
+  });
+
+  it('should reject out-of-range number', async () => {
+    const handler = createProjectHandler(config, stateManager, registry);
+    const ctx = createMockContext({ chatId: 12345, match: '99' });
 
     await handler(ctx as any);
 

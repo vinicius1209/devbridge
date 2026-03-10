@@ -3,6 +3,7 @@ import type { SessionManager } from '../sessions/manager.js';
 import type { StateManager } from '../state.js';
 import type { DevBridgeConfig } from '../types.js';
 import { sendWithMarkdown } from '../utils/telegram.js';
+import { resolveProjectByNameOrIndex } from '../utils/project-resolver.js';
 
 function timeAgo(isoDate: string): string {
   const diffMs = Date.now() - new Date(isoDate).getTime();
@@ -29,7 +30,7 @@ export function createSessionsHandler(sessionManager: SessionManager) {
     sessions.forEach((s, i) => {
       text += `  ${i + 1}. ${s.projectName} (${s.adapter}, ${s.messageCount} msgs, ${timeAgo(s.lastMessageAt)})\n`;
     });
-    text += '\nUse /switch <nome> para alternar.';
+    text += '\nUse /switch <numero ou nome> para alternar.';
 
     await sendWithMarkdown(ctx, text);
   };
@@ -41,20 +42,22 @@ export function createSwitchHandler(
 ) {
   return async (ctx: Context) => {
     const chatId = ctx.chat?.id?.toString() ?? '';
-    const name = ctx.match?.toString().trim();
+    const input = ctx.match?.toString().trim();
 
-    if (!name) {
-      await ctx.reply('Uso: /switch <nome_do_projeto>');
+    if (!input) {
+      await ctx.reply('Uso: /switch <numero ou nome>');
       return;
     }
 
-    if (!config.projects[name]) {
-      const available = Object.keys(config.projects).join(', ');
-      await ctx.reply(`Projeto "${name}" nao encontrado. Disponiveis: ${available}`);
+    const resolved = resolveProjectByNameOrIndex(input, config.projects);
+    if (!resolved) {
+      const entries = Object.entries(config.projects);
+      const list = entries.map(([n], i) => `${i + 1}. ${n}`).join('\n');
+      await ctx.reply(`Projeto "${input}" nao encontrado.\n\n${list}`);
       return;
     }
 
-    stateManager.setActiveProject(chatId, name);
-    await ctx.reply(`Projeto ativo: ${name}`);
+    stateManager.setActiveProject(chatId, resolved.name);
+    await ctx.reply(`Projeto ativo: ${resolved.name}`);
   };
 }
