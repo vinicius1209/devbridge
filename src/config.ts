@@ -1,6 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { DevBridgeConfig, ProjectConfig } from './types.js';
+import type { DevBridgeConfig, ProjectConfig, PermissionLevel } from './types.js';
 import { logger } from './utils/logger.js';
 
 const CONFIG_FILENAME = 'devbridge.config.json';
@@ -10,7 +10,9 @@ export function loadConfig(): DevBridgeConfig {
 
   if (!existsSync(configPath)) {
     console.error(`Config file not found: ${configPath}`);
-    console.error(`Copy devbridge.config.example.json to ${CONFIG_FILENAME} and fill in your values.`);
+    console.error(
+      `Copy devbridge.config.example.json to ${CONFIG_FILENAME} and fill in your values.`,
+    );
     process.exit(1);
   }
 
@@ -31,7 +33,9 @@ export function loadConfig(): DevBridgeConfig {
   let projects: Record<string, ProjectConfig> = {};
 
   if (raw.project && !raw.projects) {
-    logger.warn('Config migrado automaticamente de v0.1. Atualize para o formato v0.2 com "projects".');
+    logger.warn(
+      'Config migrado automaticamente de v0.1. Atualize para o formato v0.2 com "projects".',
+    );
     projects[raw.project.name] = {
       path: resolve(raw.project.path),
       adapter: raw.project.adapter ?? 'claude',
@@ -45,6 +49,9 @@ export function loadConfig(): DevBridgeConfig {
         adapter: (p.adapter as 'claude' | 'gemini') ?? 'claude',
         model: p.model as string | undefined,
         description: p.description as string | undefined,
+        permission_level: p.permission_level as PermissionLevel | undefined,
+        allowed_tools: p.allowed_tools as string | undefined,
+        skip_permissions: p.skip_permissions as boolean | undefined,
       };
     }
   } else {
@@ -89,6 +96,8 @@ export function loadConfig(): DevBridgeConfig {
       adapter: raw.defaults?.adapter ?? 'claude',
       model: raw.defaults?.model,
       timeout: raw.defaults?.timeout ?? 120,
+      stream_timeout: raw.defaults?.stream_timeout ?? 3600,
+      inactivity_timeout: raw.defaults?.inactivity_timeout ?? 300,
       max_message_length: raw.defaults?.max_message_length ?? 4096,
       session_ttl_hours: raw.defaults?.session_ttl_hours ?? 24,
       command_timeout: raw.defaults?.command_timeout ?? 60,

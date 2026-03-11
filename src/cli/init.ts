@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { createInterface } from 'node:readline';
 import { scanForProjects } from './scanner.js';
 import { spawnCLI } from '../utils/process.js';
+import type { PermissionLevel } from '../types.js';
 
 function createRL() {
   return createInterface({ input: process.stdin, output: process.stdout });
@@ -73,6 +74,26 @@ async function pollForChatId(token: string, rl: ReturnType<typeof createRL>): Pr
   return ask(rl, '  Cole seu Chat ID manualmente: ');
 }
 
+interface PermissionOption {
+  label: string;
+  level: PermissionLevel;
+}
+
+const PERMISSION_OPTIONS: Record<string, PermissionOption> = {
+  '1': {
+    label: 'Somente leitura (padrao seguro)',
+    level: 'readonly',
+  },
+  '2': {
+    label: 'Leitura + Escrita (pode criar e editar arquivos)',
+    level: 'read-write',
+  },
+  '3': {
+    label: 'Acesso completo (leitura, escrita, comandos shell, agentes)',
+    level: 'full',
+  },
+};
+
 export async function init() {
   const rl = createRL();
 
@@ -80,7 +101,7 @@ export async function init() {
   console.log('===============\n');
 
   // Step 1 — Detect CLIs
-  console.log('Passo 1/4 — Detectando CLIs de AI...');
+  console.log('Passo 1/5 — Detectando CLIs de AI...');
   const claudeResult = await spawnCLI('claude', ['--version'], { cwd: process.cwd(), timeout: 10 });
   const geminiResult = await spawnCLI('gemini', ['--version'], { cwd: process.cwd(), timeout: 10 });
 
@@ -97,7 +118,7 @@ export async function init() {
   }
 
   // Step 2 — Bot token
-  console.log('\nPasso 2/4 — Telegram Bot');
+  console.log('\nPasso 2/5 — Telegram Bot');
   console.log('  Crie um bot no Telegram: @BotFather \u2192 /newbot');
   const botToken = await ask(rl, '  Cole o token do seu bot: ');
 
@@ -108,17 +129,22 @@ export async function init() {
   }
 
   // Step 3 — Chat ID (auto-discovery)
-  console.log('\nPasso 3/4 — Seu Chat ID');
+  console.log('\nPasso 3/5 — Seu Chat ID');
   const chatId = await pollForChatId(botToken.trim(), rl);
 
   // Step 4 — Projects
-  console.log('\nPasso 4/4 — Projetos');
+  console.log('\nPasso 4/5 — Projetos');
   const scanPath = await ask(rl, `  Diretorio para escanear (default: ${homedir()}/projetos): `) || join(homedir(), 'projetos');
 
   console.log(`  Escaneando ${scanPath}...`);
   const detected = scanForProjects(resolve(scanPath));
 
-  const projects: Record<string, { path: string; adapter: string; description: string }> = {};
+  const projects: Record<string, {
+    path: string;
+    adapter: string;
+    description: string;
+    permission_level?: PermissionLevel;
+  }> = {};
 
   if (detected.length === 0) {
     console.log('  Nenhum projeto encontrado. Voce pode adicionar manualmente no config.');
@@ -141,6 +167,26 @@ export async function init() {
           description: `${proj.type} project`,
         };
       }
+    }
+  }
+
+  // Step 5 — Permission levels per project
+  if (Object.keys(projects).length > 0) {
+    console.log('\nPasso 5/5 — Nivel de permissao por projeto');
+    console.log('  Define o que a AI pode fazer em cada projeto:\n');
+    console.log('  1) Somente leitura — apenas consulta o codigo');
+    console.log('  2) Leitura + Escrita — pode criar e editar arquivos');
+    console.log('  3) Acesso completo — leitura, escrita, comandos shell, agentes\n');
+
+    for (const [name, proj] of Object.entries(projects)) {
+      const choice = await ask(rl, `  ${name} — nivel de permissao (1/2/3, default: 1): `) || '1';
+      const option = PERMISSION_OPTIONS[choice] ?? PERMISSION_OPTIONS['1'];
+
+      if (option.level !== 'readonly') {
+        proj.permission_level = option.level;
+      }
+
+      console.log(`    → ${option.label}\n`);
     }
   }
 
@@ -172,6 +218,8 @@ export async function init() {
     defaults: {
       adapter: hasClaudeV ? 'claude' : 'gemini',
       timeout: 120,
+      stream_timeout: 3600,
+      inactivity_timeout: 300,
       max_message_length: 4096,
       session_ttl_hours: 24,
       command_timeout: 60,

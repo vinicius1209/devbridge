@@ -8,12 +8,27 @@
       "path": "/absolute/path/to/your/project",
       "adapter": "claude",
       "model": "sonnet",
-      "description": "My main application"
+      "description": "Read-only (default) - can only read code"
+    },
+    "my-app-dev": {
+      "path": "/absolute/path/to/your/project",
+      "adapter": "claude",
+      "model": "sonnet",
+      "description": "Read + Write - can create and edit files",
+      "permission_level": "read-write"
+    },
+    "my-app-full": {
+      "path": "/absolute/path/to/your/project",
+      "adapter": "claude",
+      "model": "opus",
+      "description": "Full access - agents, commands, spec-driven dev",
+      "permission_level": "full"
     },
     "api-backend": {
       "path": "/absolute/path/to/api",
       "adapter": "gemini",
-      "description": "Backend API"
+      "description": "Backend API",
+      "permission_level": "full"
     }
   },
   "commands": {
@@ -30,6 +45,8 @@
   "defaults": {
     "adapter": "claude",
     "timeout": 120,
+    "stream_timeout": 3600,
+    "inactivity_timeout": 300,
     "max_message_length": 4096,
     "session_ttl_hours": 24,
     "command_timeout": 60

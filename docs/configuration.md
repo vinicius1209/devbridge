@@ -55,6 +55,9 @@ A map of named projects. Each project points to a local directory and specifies 
 | `adapter` | `"claude" \| "gemini"` | No | Value from `defaults.adapter` | Which AI CLI to use for this project |
 | `model` | `string` | No | Value from `defaults.model` | Model name to pass to the AI CLI (e.g., `"sonnet"`, `"opus"`) |
 | `description` | `string` | No | -- | Human-readable description shown in `/projects` output |
+| `permission_level` | `"readonly" \| "read-write" \| "full"` | No | `"readonly"` | Controls which AI tools are available and whether permissions are auto-approved. See [security.md](security.md) for details |
+| `allowed_tools` | `string` | No | Derived from `permission_level` | Explicit comma-separated list of allowed tools, overriding the permission level mapping. Advanced use only |
+| `skip_permissions` | `boolean` | No | Derived from `permission_level` | If `true`, the AI CLI skips interactive permission prompts (Claude: `--dangerously-skip-permissions`, Gemini: `--yolo`). Advanced use only |
 
 ```json
 {
@@ -63,7 +66,8 @@ A map of named projects. Each project points to a local directory and specifies 
       "path": "/home/user/projects/frontend",
       "adapter": "claude",
       "model": "sonnet",
-      "description": "React frontend app"
+      "description": "React frontend app",
+      "permission_level": "read-write"
     },
     "backend": {
       "path": "/home/user/projects/backend",
@@ -170,7 +174,9 @@ Default values for various settings.
 |--------|------|---------|-------------|
 | `adapter` | `"claude" \| "gemini"` | `"claude"` | Default adapter when a project does not specify one |
 | `model` | `string` | `undefined` | Default model passed to the AI CLI. If unset, the CLI's default is used |
-| `timeout` | `number` | `120` | Maximum seconds to wait for an AI response before timing out |
+| `timeout` | `number` | `120` | Maximum seconds to wait for an AI response before timing out (non-streaming mode) |
+| `stream_timeout` | `number` | `3600` | Hard maximum seconds for a streaming AI response. Acts as a safety net |
+| `inactivity_timeout` | `number` | `300` | Seconds of no stdout/stderr output before a streaming AI process is killed |
 | `max_message_length` | `number` | `4096` | Maximum characters per Telegram message chunk. Responses exceeding this are split |
 | `session_ttl_hours` | `number` | `24` | Hours of inactivity after which a session is automatically cleaned up |
 | `command_timeout` | `number` | `60` | Maximum seconds for `/run` command execution |
@@ -181,6 +187,8 @@ Default values for various settings.
     "adapter": "claude",
     "model": "sonnet",
     "timeout": 120,
+    "stream_timeout": 3600,
+    "inactivity_timeout": 300,
     "max_message_length": 4096,
     "session_ttl_hours": 24,
     "command_timeout": 60
@@ -261,12 +269,14 @@ When the notification server is enabled, the following endpoints are available:
       "path": "/home/user/projects/frontend",
       "adapter": "claude",
       "model": "sonnet",
-      "description": "React SPA"
+      "description": "React SPA",
+      "permission_level": "read-write"
     },
     "backend": {
       "path": "/home/user/projects/backend",
       "adapter": "gemini",
-      "description": "Go API"
+      "description": "Go API",
+      "permission_level": "readonly"
     }
   },
   "commands": {
@@ -283,6 +293,8 @@ When the notification server is enabled, the following endpoints are available:
   "defaults": {
     "adapter": "claude",
     "timeout": 120,
+    "stream_timeout": 3600,
+    "inactivity_timeout": 300,
     "max_message_length": 4096,
     "session_ttl_hours": 24,
     "command_timeout": 60
