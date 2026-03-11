@@ -65,32 +65,43 @@ Using `shell: true` would allow shell metacharacters (`|`, `;`, `&&`, `$()`, bac
 - Avoid whitelisting commands that accept user input from arguments (the alias itself is the only input)
 - Use specific commands rather than generic wrappers
 
-### 3. Read-Only AI Tools
+### 3. Configurable Permission Levels
 
-**File**: `src/adapters/claude.ts`
+**Files**: `src/adapters/permissions.ts`, `src/adapters/claude.ts`, `src/adapters/gemini.ts`
 
-When DevBridge invokes Claude CLI, it restricts the AI to read-only file system tools:
+Each project has a `permission_level` that controls which AI tools are available and whether interactive permission prompts are skipped. The default is `"readonly"`.
 
-```typescript
-const args = [
-  '-p', message,
-  '--session-id', sessionId,
-  '--output-format', 'text',
-  '--allowedTools', 'Read,Glob,Grep',
-];
+| Level | AI Can Do | Permissions Auto-Approved |
+|-------|-----------|--------------------------|
+| `readonly` (default) | Read files, search files and contents | No |
+| `read-write` | All of the above + create, write, and edit files | Yes |
+| `full` | All of the above + execute shell commands, access the network, run agents | Yes |
+
+**Tool mapping per adapter**:
+
+| Level | Claude CLI (`--allowedTools`) | Gemini CLI (`--allowed-tools`) |
+|-------|------------------------------|-------------------------------|
+| `readonly` | `Read,Glob,Grep` | `ReadFileTool,ReadManyFilesTool,GlobTool,GrepTool` |
+| `read-write` | `Read,Glob,Grep,Write,Edit,MultiEdit` | Above + `WriteFileTool,EditTool` |
+| `full` | Above + `Bash,WebFetch,WebSearch,Agent,NotebookEdit` | Above + `ShellTool,WebFetchTool,WebSearchTool` |
+
+**Permission bypass flags**:
+- `read-write` and `full` levels automatically pass `--dangerously-skip-permissions` (Claude) or `--yolo` (Gemini) to avoid interactive prompts that would block the CLI process
+- The `readonly` level does not skip permissions since read-only tools do not trigger prompts
+
+**Advanced overrides**: You can bypass the permission level mapping entirely by setting `allowed_tools` (explicit tool list) or `skip_permissions` (explicit bypass flag) on a project. These take precedence over the `permission_level` defaults.
+
+```json
+{
+  "projects": {
+    "my-app": {
+      "path": "/path/to/project",
+      "adapter": "claude",
+      "permission_level": "read-write"
+    }
+  }
+}
 ```
-
-**What this means**:
-- Claude can **read** files (`Read` tool)
-- Claude can **search** for files (`Glob` tool)
-- Claude can **search** file contents (`Grep` tool)
-- Claude **cannot** write, edit, or delete files
-- Claude **cannot** execute shell commands
-- Claude **cannot** access the network
-
-This ensures that even if the AI misinterprets a request, it cannot modify your codebase or execute arbitrary code.
-
-**Note for Gemini adapter**: The Gemini CLI adapter (`src/adapters/gemini.ts`) passes messages directly to the CLI without DevBridge-side tool restrictions. Any restrictions depend on Gemini CLI's own safety configuration.
 
 ### 4. Webhook Signature Verification
 
@@ -179,7 +190,7 @@ The `/mute` and `/notifications off` commands allow users to temporarily or perm
 |--------|------------|
 | Unauthorized Telegram user sends commands | Chat ID whitelist silently drops messages |
 | Arbitrary command execution via `/run` | Command whitelist + no `shell: true` |
-| AI modifies or deletes files | Claude restricted to Read/Glob/Grep tools |
+| AI modifies or deletes files | Default `readonly` permission level restricts tools to Read/Glob/Grep. Higher levels (`read-write`, `full`) grant write or shell access intentionally |
 | Forged GitHub webhooks | HMAC-SHA256 signature verification with timing-safe comparison |
 | Webhook flood / DDoS | Per-IP rate limiting + local bind address |
 | Config file exposure | `devbridge.config.json` is in `.gitignore` |
@@ -198,4 +209,5 @@ The `/mute` and `/notifications off` commands allow users to temporarily or perm
 5. **Use a reverse proxy** -- If exposing the notification server externally, terminate TLS at the proxy
 6. **Monitor logs** -- Check `~/.devbridge/logs/devbridge.log` for unauthorized access attempts
 7. **Keep CLIs updated** -- Ensure Claude CLI, Gemini CLI, and `gh` CLI are up to date with the latest security patches
+8. **Use `readonly` for projects that don't need write access** -- The default `readonly` permission level is the safest option. Only escalate to `read-write` or `full` for projects where the AI genuinely needs to create or modify files. Review your permission levels periodically
 ]]>

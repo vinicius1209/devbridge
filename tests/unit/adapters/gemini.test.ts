@@ -12,11 +12,13 @@ vi.mock('../../../src/utils/logger.js', () => ({
 
 vi.mock('../../../src/utils/process.js', () => ({
   spawnCLI: vi.fn(),
+  spawnCLIStreaming: vi.fn(),
 }));
 
-import { spawnCLI } from '../../../src/utils/process.js';
+import { spawnCLI, spawnCLIStreaming } from '../../../src/utils/process.js';
 
 const mockedSpawnCLI = vi.mocked(spawnCLI);
+const mockedSpawnCLIStreaming = vi.mocked(spawnCLIStreaming);
 
 describe('GeminiAdapter', () => {
   let adapter: GeminiAdapter;
@@ -76,7 +78,7 @@ describe('GeminiAdapter', () => {
       expect(mockedSpawnCLI).toHaveBeenCalledWith(
         'gemini',
         expect.arrayContaining(['-p', 'hello', '--model', 'gemini-pro']),
-        expect.objectContaining({ cwd: '/tmp/project', timeout: 60 })
+        expect.objectContaining({ cwd: '/tmp/project', timeout: 60 }),
       );
     });
 
@@ -121,10 +123,12 @@ describe('GeminiAdapter', () => {
         timedOut: true,
       });
 
-      await expect(adapter.chat('hello', null, {
-        cwd: '/tmp/project',
-        timeout: 30,
-      })).rejects.toThrow(/Timeout/);
+      await expect(
+        adapter.chat('hello', null, {
+          cwd: '/tmp/project',
+          timeout: 30,
+        }),
+      ).rejects.toThrow(/Timeout/);
     });
 
     it('should throw SESSION_EXPIRED on session errors', async () => {
@@ -135,9 +139,11 @@ describe('GeminiAdapter', () => {
         timedOut: false,
       });
 
-      await expect(adapter.chat('hello', 'gemini:/tmp/project', {
-        cwd: '/tmp/project',
-      })).rejects.toThrow('SESSION_EXPIRED');
+      await expect(
+        adapter.chat('hello', 'gemini:/tmp/project', {
+          cwd: '/tmp/project',
+        }),
+      ).rejects.toThrow('SESSION_EXPIRED');
     });
 
     it('should throw on non-zero exit code', async () => {
@@ -148,9 +154,11 @@ describe('GeminiAdapter', () => {
         timedOut: false,
       });
 
-      await expect(adapter.chat('hello', null, {
-        cwd: '/tmp/project',
-      })).rejects.toThrow(/Erro ao processar/);
+      await expect(
+        adapter.chat('hello', null, {
+          cwd: '/tmp/project',
+        }),
+      ).rejects.toThrow(/Erro ao processar/);
     });
 
     it('should return "(resposta vazia)" on empty success', async () => {
@@ -183,6 +191,144 @@ describe('GeminiAdapter', () => {
       expect(result.text).toBe('response');
       const callArgs = mockedSpawnCLI.mock.calls[0][1];
       expect(callArgs).not.toContain('--model');
+    });
+  });
+
+  describe('chatStream', () => {
+    it('should exist as a method', () => {
+      expect(adapter.chatStream).toBeDefined();
+    });
+
+    it('should call spawnCLIStreaming with correct arguments', async () => {
+      mockedSpawnCLIStreaming.mockResolvedValue({
+        stdout: 'Streamed response',
+        stderr: '',
+        exitCode: 0,
+        timedOut: false,
+      });
+
+      const result = await adapter.chatStream!('hello', null, {
+        cwd: '/tmp/project',
+        onChunk: () => {},
+      });
+
+      expect(result.sessionId).toBe('gemini:/tmp/project');
+      expect(mockedSpawnCLIStreaming).toHaveBeenCalledWith(
+        'gemini',
+        expect.arrayContaining(['-p', 'hello']),
+        expect.objectContaining({ cwd: '/tmp/project' }),
+      );
+    });
+
+    it('should use default stream timeout of 600s', async () => {
+      mockedSpawnCLIStreaming.mockResolvedValue({
+        stdout: '',
+        stderr: '',
+        exitCode: 0,
+        timedOut: false,
+      });
+
+      await adapter.chatStream!('hello', null, {
+        cwd: '/tmp/project',
+        onChunk: () => {},
+      });
+
+      const options = mockedSpawnCLIStreaming.mock.calls[0][2];
+      expect(options.timeout).toBe(600);
+    });
+
+    it('should call onChunk with text deltas', async () => {
+      const chunks: string[] = [];
+
+      mockedSpawnCLIStreaming.mockImplementation(async (_cmd, _args, options) => {
+        if (options.onChunk) {
+          await options.onChunk('Full response text');
+        }
+        return {
+          stdout: 'Full response text',
+          stderr: '',
+          exitCode: 0,
+          timedOut: false,
+        };
+      });
+
+      await adapter.chatStream!('test', null, {
+        cwd: '/tmp/project',
+        onChunk: (chunk) => {
+          chunks.push(chunk);
+        },
+      });
+
+      expect(chunks.length).toBeGreaterThan(0);
+    });
+
+    it('should throw on stream timeout', async () => {
+      mockedSpawnCLIStreaming.mockResolvedValue({
+        stdout: '',
+        stderr: '',
+        exitCode: 1,
+        timedOut: true,
+      });
+
+      await expect(
+        adapter.chatStream!('hello', null, {
+          cwd: '/tmp/project',
+          onChunk: () => {},
+          timeout: 300,
+        }),
+      ).rejects.toThrow(/Timeout/);
+    });
+
+    it('should throw SESSION_EXPIRED on session errors', async () => {
+      mockedSpawnCLIStreaming.mockResolvedValue({
+        stdout: '',
+        stderr: 'could not resume session',
+        exitCode: 1,
+        timedOut: false,
+      });
+
+      await expect(
+        adapter.chatStream!('hello', 'gemini:/tmp/project', {
+          cwd: '/tmp/project',
+          onChunk: () => {},
+        }),
+      ).rejects.toThrow('SESSION_EXPIRED');
+    });
+
+    it('should add --resume latest when sessionId is provided', async () => {
+      mockedSpawnCLIStreaming.mockResolvedValue({
+        stdout: '',
+        stderr: '',
+        exitCode: 0,
+        timedOut: false,
+      });
+
+      await adapter.chatStream!('hello', 'gemini:/tmp/project', {
+        cwd: '/tmp/project',
+        onChunk: () => {},
+      });
+
+      const args = mockedSpawnCLIStreaming.mock.calls[0][1];
+      expect(args).toContain('--resume');
+      expect(args).toContain('latest');
+    });
+
+    it('should pass minChunkSize option', async () => {
+      mockedSpawnCLIStreaming.mockResolvedValue({
+        stdout: '',
+        stderr: '',
+        exitCode: 0,
+        timedOut: false,
+      });
+
+      await adapter.chatStream!('hello', null, {
+        cwd: '/tmp/project',
+        onChunk: () => {},
+        minChunkSize: 200,
+      });
+
+      const options = mockedSpawnCLIStreaming.mock.calls[0][2];
+      expect(options.minChunkSize).toBe(200);
     });
   });
 });

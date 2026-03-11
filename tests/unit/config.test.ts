@@ -54,10 +54,12 @@ describe('loadConfig', () => {
 
   it('should exit if bot_token is missing', async () => {
     mockedExistsSync.mockReturnValue(true);
-    mockedReadFileSync.mockReturnValue(JSON.stringify({
-      telegram: { allowed_users: ['123'] },
-      projects: { test: { path: '/tmp', adapter: 'claude' } },
-    }));
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({
+        telegram: { allowed_users: ['123'] },
+        projects: { test: { path: '/tmp', adapter: 'claude' } },
+      }),
+    );
 
     const loadConfig = await loadConfigFresh();
 
@@ -67,10 +69,12 @@ describe('loadConfig', () => {
 
   it('should exit if allowed_users is empty', async () => {
     mockedExistsSync.mockReturnValue(true);
-    mockedReadFileSync.mockReturnValue(JSON.stringify({
-      telegram: { bot_token: 'test-token:ABC', allowed_users: [] },
-      projects: { test: { path: '/tmp', adapter: 'claude' } },
-    }));
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({
+        telegram: { bot_token: 'test-token:ABC', allowed_users: [] },
+        projects: { test: { path: '/tmp', adapter: 'claude' } },
+      }),
+    );
 
     const loadConfig = await loadConfigFresh();
 
@@ -80,9 +84,11 @@ describe('loadConfig', () => {
 
   it('should exit if no projects configured', async () => {
     mockedExistsSync.mockReturnValue(true);
-    mockedReadFileSync.mockReturnValue(JSON.stringify({
-      telegram: { bot_token: 'test-token:ABC', allowed_users: ['123'] },
-    }));
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({
+        telegram: { bot_token: 'test-token:ABC', allowed_users: ['123'] },
+      }),
+    );
 
     const loadConfig = await loadConfigFresh();
 
@@ -93,17 +99,24 @@ describe('loadConfig', () => {
   it('should load valid config with projects', async () => {
     // For project path validation, existsSync needs to return true
     mockedExistsSync.mockReturnValue(true);
-    mockedReadFileSync.mockReturnValue(JSON.stringify({
-      telegram: { bot_token: 'test-token:ABC', allowed_users: ['123'] },
-      projects: {
-        'my-app': { path: '/tmp/my-app', adapter: 'claude', model: 'sonnet', description: 'Test' },
-      },
-      commands: { test: 'yarn test' },
-      defaults: {
-        adapter: 'claude',
-        timeout: 60,
-      },
-    }));
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({
+        telegram: { bot_token: 'test-token:ABC', allowed_users: ['123'] },
+        projects: {
+          'my-app': {
+            path: '/tmp/my-app',
+            adapter: 'claude',
+            model: 'sonnet',
+            description: 'Test',
+          },
+        },
+        commands: { test: 'yarn test' },
+        defaults: {
+          adapter: 'claude',
+          timeout: 60,
+        },
+      }),
+    );
 
     const loadConfig = await loadConfigFresh();
     const config = loadConfig();
@@ -123,15 +136,17 @@ describe('loadConfig', () => {
 
   it('should handle v0.1 compat - migrate project (singular) to projects (plural)', async () => {
     mockedExistsSync.mockReturnValue(true);
-    mockedReadFileSync.mockReturnValue(JSON.stringify({
-      telegram: { bot_token: 'test-token:ABC', allowed_users: ['123'] },
-      project: {
-        name: 'legacy-app',
-        path: '/tmp/legacy',
-        adapter: 'claude',
-        model: 'opus',
-      },
-    }));
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({
+        telegram: { bot_token: 'test-token:ABC', allowed_users: ['123'] },
+        project: {
+          name: 'legacy-app',
+          path: '/tmp/legacy',
+          adapter: 'claude',
+          model: 'opus',
+        },
+      }),
+    );
 
     const loadConfig = await loadConfigFresh();
     const config = loadConfig();
@@ -143,15 +158,17 @@ describe('loadConfig', () => {
 
   it('should parse notifications config with defaults', async () => {
     mockedExistsSync.mockReturnValue(true);
-    mockedReadFileSync.mockReturnValue(JSON.stringify({
-      telegram: { bot_token: 'test-token:ABC', allowed_users: ['123'] },
-      projects: { app: { path: '/tmp/app', adapter: 'claude' } },
-      notifications: {
-        enabled: true,
-        port: 8080,
-        secret: 'my-secret',
-      },
-    }));
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({
+        telegram: { bot_token: 'test-token:ABC', allowed_users: ['123'] },
+        projects: { app: { path: '/tmp/app', adapter: 'claude' } },
+        notifications: {
+          enabled: true,
+          port: 8080,
+          secret: 'my-secret',
+        },
+      }),
+    );
 
     const loadConfig = await loadConfigFresh();
     const config = loadConfig();
@@ -160,7 +177,12 @@ describe('loadConfig', () => {
     expect(config.notifications!.enabled).toBe(true);
     expect(config.notifications!.port).toBe(8080);
     expect(config.notifications!.secret).toBe('my-secret');
-    expect(config.notifications!.github_events).toEqual(['push', 'pull_request', 'issues', 'workflow_run']);
+    expect(config.notifications!.github_events).toEqual([
+      'push',
+      'pull_request',
+      'issues',
+      'workflow_run',
+    ]);
     expect(config.notifications!.watched_branches).toEqual(['main', 'master', 'develop']);
     expect(config.notifications!.rate_limit.max_per_minute).toBe(30);
     expect(config.notifications!.rate_limit.cooldown_seconds).toBe(5);
@@ -168,10 +190,12 @@ describe('loadConfig', () => {
 
   it('should have undefined notifications when not configured', async () => {
     mockedExistsSync.mockReturnValue(true);
-    mockedReadFileSync.mockReturnValue(JSON.stringify({
-      telegram: { bot_token: 'test-token:ABC', allowed_users: ['123'] },
-      projects: { app: { path: '/tmp/app', adapter: 'claude' } },
-    }));
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({
+        telegram: { bot_token: 'test-token:ABC', allowed_users: ['123'] },
+        projects: { app: { path: '/tmp/app', adapter: 'claude' } },
+      }),
+    );
 
     const loadConfig = await loadConfigFresh();
     const config = loadConfig();
@@ -181,10 +205,12 @@ describe('loadConfig', () => {
 
   it('should convert allowed_users to strings', async () => {
     mockedExistsSync.mockReturnValue(true);
-    mockedReadFileSync.mockReturnValue(JSON.stringify({
-      telegram: { bot_token: 'test-token:ABC', allowed_users: [12345, 67890] },
-      projects: { app: { path: '/tmp/app', adapter: 'claude' } },
-    }));
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({
+        telegram: { bot_token: 'test-token:ABC', allowed_users: [12345, 67890] },
+        projects: { app: { path: '/tmp/app', adapter: 'claude' } },
+      }),
+    );
 
     const loadConfig = await loadConfigFresh();
     const config = loadConfig();
@@ -194,16 +220,20 @@ describe('loadConfig', () => {
 
   it('should use default values when defaults not provided', async () => {
     mockedExistsSync.mockReturnValue(true);
-    mockedReadFileSync.mockReturnValue(JSON.stringify({
-      telegram: { bot_token: 'test-token:ABC', allowed_users: ['123'] },
-      projects: { app: { path: '/tmp/app', adapter: 'claude' } },
-    }));
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({
+        telegram: { bot_token: 'test-token:ABC', allowed_users: ['123'] },
+        projects: { app: { path: '/tmp/app', adapter: 'claude' } },
+      }),
+    );
 
     const loadConfig = await loadConfigFresh();
     const config = loadConfig();
 
     expect(config.defaults.adapter).toBe('claude');
     expect(config.defaults.timeout).toBe(120);
+    expect(config.defaults.stream_timeout).toBe(3600);
+    expect(config.defaults.inactivity_timeout).toBe(300);
     expect(config.defaults.max_message_length).toBe(4096);
     expect(config.defaults.session_ttl_hours).toBe(24);
     expect(config.defaults.command_timeout).toBe(60);
@@ -216,10 +246,12 @@ describe('loadConfig', () => {
       if (p.includes('devbridge.config.json')) return true;
       return false; // project path does not exist
     });
-    mockedReadFileSync.mockReturnValue(JSON.stringify({
-      telegram: { bot_token: 'test-token:ABC', allowed_users: ['123'] },
-      projects: { app: { path: '/nonexistent/path', adapter: 'claude' } },
-    }));
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({
+        telegram: { bot_token: 'test-token:ABC', allowed_users: ['123'] },
+        projects: { app: { path: '/nonexistent/path', adapter: 'claude' } },
+      }),
+    );
 
     const loadConfig = await loadConfigFresh();
 

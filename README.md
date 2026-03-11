@@ -21,7 +21,7 @@ DevBridge turns your Telegram into a powerful developer control panel. Chat with
 
 - 🤖 **AI Chat via Telegram** -- Send messages to Claude CLI or Gemini CLI and get responses right in Telegram
 - 📂 **Multi-Project Support** -- Switch between multiple codebases on the fly with `/project`
-- 🔒 **Security First** -- Chat ID whitelist, command sandbox with whitelist-only execution, read-only AI tools
+- 🔒 **Security First** -- Chat ID whitelist, command sandbox with whitelist-only execution, configurable AI permission levels (`readonly`, `read-write`, `full`)
 - 🔌 **Plugin System** -- Extend functionality with built-in or custom plugins (Git, GitHub, and more)
 - 🏃 **Run Commands** -- Execute pre-approved shell commands (`/run test`, `/run build`) safely
 - 💬 **Session Management** -- Persistent conversation sessions per project with automatic TTL cleanup
@@ -72,12 +72,14 @@ DevBridge is configured via `devbridge.config.json` in your working directory. R
       "path": "/absolute/path/to/project",  // Absolute path to project root
       "adapter": "claude",                   // "claude" or "gemini"
       "model": "sonnet",                     // Optional: model override
-      "description": "My main app"           // Optional: shown in /projects
+      "description": "My main app",          // Optional: shown in /projects
+      "permission_level": "read-write"       // Optional: "readonly" (default), "read-write", or "full"
     },
     "api-backend": {
       "path": "/absolute/path/to/api",
       "adapter": "gemini",
       "description": "Backend API"
+      // permission_level defaults to "readonly"
     }
   },
 
@@ -100,7 +102,9 @@ DevBridge is configured via `devbridge.config.json` in your working directory. R
   "defaults": {
     "adapter": "claude",           // Default adapter for new projects
     "model": "sonnet",             // Default model (adapter-specific)
-    "timeout": 120,                // AI response timeout in seconds
+    "timeout": 120,                // AI response timeout in seconds (non-streaming)
+    "stream_timeout": 3600,        // Hard max seconds for streaming responses (1 hour)
+    "inactivity_timeout": 300,     // Kill streaming process after N seconds of no output
     "max_message_length": 4096,    // Telegram message chunk size
     "session_ttl_hours": 24,       // Auto-cleanup inactive sessions
     "command_timeout": 60          // /run command timeout in seconds
@@ -181,7 +185,7 @@ See [docs/configuration.md](docs/configuration.md) for detailed documentation of
 
 ### Chat
 
-Any message that is not a command is sent to the AI agent (Claude or Gemini) as a conversation prompt. The AI operates within your active project's directory and can read files using safe, read-only tools.
+Any message that is not a command is sent to the AI agent (Claude or Gemini) as a conversation prompt. The AI operates within your active project's directory. The tools available to the AI depend on the project's `permission_level`: `readonly` (default) restricts the AI to reading files, `read-write` allows file creation and editing, and `full` grants shell and network access. See [docs/security.md](docs/security.md) for details.
 
 ## 🔌 Plugin System
 
@@ -250,7 +254,7 @@ DevBridge is designed with multiple layers of security:
 
 2. **Command Sandbox** -- The `/run` command only executes commands explicitly listed in the `commands` config. Commands are spawned without `shell: true` to prevent injection attacks.
 
-3. **Read-Only AI Tools** -- The Claude adapter restricts the AI to read-only tools (`Read`, `Glob`, `Grep`), preventing the AI from modifying files when accessed via Telegram.
+3. **Configurable AI Permission Levels** -- Each project has a `permission_level` (`readonly`, `read-write`, or `full`) that controls which tools the AI can use. The default `readonly` level restricts the AI to read-only tools (`Read`, `Glob`, `Grep`), preventing file modifications. Higher levels grant write or full access as needed.
 
 4. **Webhook Signature Verification** -- GitHub webhooks are verified using HMAC-SHA256 signatures when a `secret` is configured.
 
@@ -307,7 +311,7 @@ curl -X POST http://localhost:9876/webhook/ci \
 A: Claude CLI and Gemini CLI are supported out of the box. DevBridge uses an adapter system, so new CLIs can be added by implementing the `CLIAdapter` interface. See [docs/adapters.md](docs/adapters.md).
 
 **Q: Can the AI modify my files?**
-A: By default, no. The Claude adapter restricts the AI to read-only tools (`Read`, `Glob`, `Grep`). The Gemini adapter passes messages directly with no tool restrictions from DevBridge's side (restrictions depend on Gemini CLI's own configuration).
+A: By default, no. Both adapters use a `permission_level` system that defaults to `readonly`, restricting the AI to read-only tools. Set `permission_level` to `"read-write"` to allow file creation and editing, or `"full"` for complete access including shell commands. See [docs/security.md](docs/security.md) for details.
 
 **Q: Is it safe to expose the notification server to the internet?**
 A: The server binds to `127.0.0.1` by default. If you need external access (e.g., for GitHub webhooks), use a reverse proxy with HTTPS, configure a webhook `secret` for HMAC verification, and consider firewall rules. Rate limiting is built in.

@@ -21,21 +21,30 @@ interface CLIAdapter {
   // Check if the CLI binary is installed and accessible.
   // Called at startup to detect available adapters.
 
-  chat(message: string, sessionId: string, options: ChatOptions & { cwd: string }): Promise<string>;
-  // Send a message to the AI and return the response text.
+  chat(
+    message: string,
+    sessionId: string | null,
+    options: ChatOptions & { cwd: string }
+  ): Promise<ChatResult>;
+  // Send a message to the AI and return the response.
   // - message: the user's text from Telegram
-  // - sessionId: unique identifier for the conversation session
+  // - sessionId: unique identifier for the conversation session (null for first message)
   // - options.model: optional model name override
   // - options.timeout: max seconds to wait (default: 120)
   // - options.cwd: project directory to run the CLI in
+  // - options.allowedTools: optional comma-separated tool list override
+  // - options.skipPermissions: optional flag to skip interactive permission prompts
 
-  newSession(projectPath: string): string;
-  // Create a new session and return its ID.
-  // Called when the user starts a new conversation or after /clear.
-
-  clearSession(sessionId: string): void;
-  // Clean up resources associated with a session.
-  // Called when the user runs /clear or when sessions expire.
+  chatStream?(
+    message: string,
+    sessionId: string | null,
+    options: StreamChatOptions & { cwd: string }
+  ): Promise<ChatResult>;
+  // Optional streaming variant of chat(). Sends output chunks incrementally
+  // via the onChunk callback as the CLI produces them.
+  // - options.onChunk: callback invoked with each output chunk
+  // - options.minChunkSize: minimum characters to buffer before calling onChunk
+  // - options.inactivityTimeout: seconds of no output before killing the process
 }
 ```
 
@@ -47,6 +56,19 @@ type AdapterName = 'claude' | 'gemini';  // Extend this union for new adapters
 interface ChatOptions {
   model?: string;
   timeout?: number;
+  allowedTools?: string;      // Comma-separated list of tools (e.g., "Read,Glob,Grep")
+  skipPermissions?: boolean;  // Skip interactive permission prompts in the CLI
+}
+
+interface ChatResult {
+  text: string;
+  sessionId: string | null;
+}
+
+interface StreamChatOptions extends ChatOptions {
+  onChunk: (chunk: string) => void | Promise<void>;
+  minChunkSize?: number;
+  inactivityTimeout?: number;
 }
 ```
 
@@ -212,9 +234,13 @@ When the user runs `/clear` or a session expires:
 
 ---
 
-## The `spawnCLI` Utility
+## The `spawnCLI` and `spawnCLIStreaming` Utilities
 
-DevBridge provides `src/utils/process.ts` with a `spawnCLI` function that handles:
+DevBridge provides `src/utils/process.ts` with two functions for running CLI processes.
+
+### `spawnCLI` -- Buffered execution
+
+Runs a CLI command and returns the full output after the process exits. Best for short-lived commands.
 
 - Process spawning with `spawn()` (no `shell: true`)
 - Timeout management (SIGTERM followed by SIGKILL)
@@ -237,7 +263,15 @@ function spawnCLI(
 ): Promise<SpawnResult>;
 ```
 
-Use this utility in your adapter to get consistent behavior with the rest of the system.
+### `spawnCLIStreaming` -- Streaming execution
+
+Runs a CLI command and streams output chunks as they arrive. Designed for long-running AI responses where you want incremental feedback.
+
+- **Inactivity timeout**: If the process produces no stdout/stderr for `inactivityTimeout` seconds (default: 300), it is killed. This prevents hung processes from blocking indefinitely.
+- **Hard timeout**: A safety-net `streamTimeout` (default: 3600 seconds / 1 hour) kills the process regardless of activity.
+- Calls `onChunk` with each output chunk as it arrives
+
+Use `spawnCLI` for quick operations (version checks, short prompts) and `spawnCLIStreaming` for AI chat responses that may take minutes.
 
 ---
 
@@ -269,8 +303,9 @@ class AdapterRegistry {
 
 - **Binary**: `claude`
 - **Session management**: Uses `--session-id` and `--resume` flags for multi-turn conversations
-- **Output format**: `--output-format text`
-- **Safety**: Restricts tools to `Read,Glob,Grep` via `--allowedTools`
+- **Output format**: `--output-format stream-json` (streaming mode) or `--output-format text` (non-streaming)
+- **Permission control**: Tools are configured via `--allowedTools` based on the project's `permission_level` (default: `Read,Glob,Grep`). When `skipPermissions` is enabled, passes `--dangerously-skip-permissions` to auto-approve tool usage
+- **Streaming**: Supports `chatStream()` via `spawnCLIStreaming` with inactivity timeout
 - **Session tracking**: An in-memory `Set<string>` tracks active sessions to decide when to use `--resume`
 - **Error recovery**: Detects corrupted sessions from error messages and signals for automatic cleanup
 
@@ -279,7 +314,8 @@ class AdapterRegistry {
 - **Binary**: `gemini`
 - **Session management**: Uses `-p` flag for prompts (session continuity depends on Gemini CLI capabilities)
 - **Output format**: Uses CLI defaults
-- **Safety**: No DevBridge-side tool restrictions; relies on Gemini CLI's own safety configuration
+- **Permission control**: Tools are configured via `--allowed-tools` based on the project's `permission_level`. When `skipPermissions` is enabled, passes `--yolo` to auto-approve tool usage
+- **Streaming**: Supports `chatStream()` via `spawnCLIStreaming` with inactivity timeout
 
 ---
 
